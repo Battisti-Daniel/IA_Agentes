@@ -10,11 +10,11 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
 
-/** Inimigo com sprite (scorpion) e suporte a BOSS com escala maior. */
+/** Inimigo com sprite (scorpion) e suporte a BOSS e SUPER BOSS. */
 public class Enemy {
 
     // ===== Sprite base (inimigo comum) =====
-    private static final String SHEET_PATH = "sprite_mob/scorpion.png"; // ajuste se necessário
+    private static final String SHEET_PATH = "sprite_mob/scorpion.png";
     private static final int COLS = 4;
     private static final int ROWS = 1;
     private static final float WALK_FRAME_SEC = 0.12f;
@@ -24,7 +24,7 @@ public class Enemy {
 
     // ===== Escalas visuais =====
     private static final float NORMAL_SCALE = 2.0f;
-    private static final float BOSS_SCALE   = 3.0f;   // <<< AUMENTE/REDUZA AQUI o tamanho do boss
+    private static final float BOSS_SCALE   = 3.0f;
 
     // ===== Frames do boss registrados externamente (GameScreen) =====
     private static TextureRegion[] BOSS_FRAMES;
@@ -35,13 +35,14 @@ public class Enemy {
     public float r = 10f;         // raio para colisão
     public float baseSpeed = 60f; // velocidade base (a efetiva vem de fora)
     public int hp = 1;
+    public int maxHp = 1;         // <<< NOVO: vida máxima para barra
     public boolean isBoss = false;
 
     private final Vector2 tmp = new Vector2();
 
     // ===== Visual =====
     private Texture sheetTex; // só do inimigo comum
-    private Animation<TextureRegion> walkAnim;     // comum
+    private Animation<TextureRegion> walkAnim;     // comum / também usado no super boss
     private Animation<TextureRegion> bossAnim;     // boss (se frames forem fornecidos)
     private TextureRegion current;
     private float animTime = 0f;
@@ -62,6 +63,7 @@ public class Enemy {
         this.r = r;
         this.baseSpeed = baseSpeed;
         this.hp = hp;
+        this.maxHp = hp;             // <<< NOVO
         this.visualScale = NORMAL_SCALE;
         loadCommonSheet();
         buildBossAnimIfPossible();
@@ -86,7 +88,7 @@ public class Enemy {
             for (TextureRegion tr : BOSS_FRAMES) frames.add(tr);
             bossAnim = new Animation<>(WALK_FRAME_SEC, frames, Animation.PlayMode.LOOP);
         } else {
-            bossAnim = null; // fallback: usa walkAnim (ou o render de círculo)
+            bossAnim = null;
         }
     }
 
@@ -94,12 +96,39 @@ public class Enemy {
     public static Enemy makeBoss(Vector2 p) {
         Enemy e = new Enemy(p);
         e.isBoss = true;
-        e.visualScale = BOSS_SCALE;                         // <<< aplica escala maior
-        e.hp = 12;                                          // ajuste à vontade
-        // Ajusta hitbox proporcionalmente à escala visual (opcional)
-        e.r = 20f * (BOSS_SCALE / NORMAL_SCALE);            // <<< colisão maior
-        // Boss pode ser um pouco mais lento se quiser:
-        // e.baseSpeed = 52f;
+        e.visualScale = BOSS_SCALE;
+        e.hp = 12;
+        e.maxHp = e.hp;                                // <<< NOVO
+        e.r = 20f * (BOSS_SCALE / NORMAL_SCALE);
+        return e;
+    }
+
+    /** Fábrica de SUPER BOSS (usa sprite própria). */
+    public static Enemy makeSuperBoss(Vector2 p) {
+        return makeSuperBoss(p, "sprite_mob/finalBoss.png");
+    }
+
+    public static Enemy makeSuperBoss(Vector2 p, String spritePath) {
+        Enemy e = new Enemy(p);
+        e.isBoss = true;
+        e.visualScale = BOSS_SCALE * 1.4f;
+        e.hp = 120;
+        e.maxHp = e.hp;                                // <<< NOVO
+        e.r = 30f * (BOSS_SCALE / NORMAL_SCALE);
+        e.baseSpeed = 80f;
+
+        // Troca o sprite para o arquivo específico
+        if (e.sheetTex != null) e.sheetTex.dispose();
+        e.sheetTex = new Texture(Gdx.files.internal(spritePath));
+        int fw = e.sheetTex.getWidth() / COLS;
+        int fh = e.sheetTex.getHeight() / ROWS;
+        TextureRegion[][] grid = TextureRegion.split(e.sheetTex, fw, fh);
+        Array<TextureRegion> frames = new Array<>(COLS);
+        for (int c = 0; c < COLS; c++) frames.add(grid[0][c]);
+        e.walkAnim = new Animation<>(WALK_FRAME_SEC, frames, Animation.PlayMode.LOOP);
+        e.current = frames.first();
+
+        e.bossAnim = null; // <<< ESSENCIAL: força usar a animação do sprite do SUPER BOSS
         return e;
     }
 
@@ -128,18 +157,17 @@ public class Enemy {
     public void render(SpriteBatch batch, float dt) {
         animTime += dt;
 
-        // Seleciona animação conforme tipo
+        // Se existir bossAnim e for boss comum, usa; super boss usa walkAnim.
         Animation<TextureRegion> anim = (isBoss && bossAnim != null) ? bossAnim : walkAnim;
         current = anim.getKeyFrame(animTime, true);
 
-        // flip horizontal conforme direção desejada vs direção “base”
+        // flip horizontal
         boolean wantFlipX = (facingLeft != BASE_FACES_LEFT);
         if (current.isFlipX() != wantFlipX) current.flip(true, false);
 
         float fw = current.getRegionWidth()  * visualScale;
         float fh = current.getRegionHeight() * visualScale;
 
-        // âncora: centro-x e “pés” um pouco acima da base do quadro
         float drawX = pos.x - fw * 0.5f;
         float drawY = pos.y - fh * 0.25f;
 
@@ -147,11 +175,11 @@ public class Enemy {
             dieTime += dt;
             if (dieTime >= DIE_DURATION) {
                 diedAndFinished = true;
-                return; // não desenha mais
+                return;
             }
             float t = dieTime / DIE_DURATION;
             float alpha = 1f - t;
-            float s = 1f - 0.6f * t; // encolhe até 40%
+            float s = 1f - 0.6f * t;
 
             float w = fw * s;
             float h = fh * s;
@@ -175,7 +203,5 @@ public class Enemy {
 
     public void dispose() {
         if (sheetTex != null) sheetTex.dispose();
-        // boss frames vêm do GameScreen (que carrega e dá setBossFrames),
-        // então a textura do boss é liberada lá.
     }
 }

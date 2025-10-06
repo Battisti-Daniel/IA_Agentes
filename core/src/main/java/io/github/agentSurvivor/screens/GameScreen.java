@@ -49,7 +49,7 @@ public class GameScreen extends ScreenAdapter {
     private float gemScale = 1.2f;
 
     // BOSS (sprite 1x4)
-    private static final String BOSS_PATH = "sprite_mob/boss.png";
+    private static String BOSS_PATH = "sprite_mob/boss.png";
     private Texture bossTex;
 
     // ===== Música =====
@@ -57,6 +57,10 @@ public class GameScreen extends ScreenAdapter {
     private int currentTrack = 0;
     private boolean musicEnabled = true;
     private float musicCheckTimer = 0f;
+
+    // Música do boss final
+    private Music finalBossMusic;
+    private boolean finalBossMusicPlaying = false;
 
     // Ganhos (reduzem volume sem mexer no slider do jogador)
     private static final float MUSIC_GAIN = 0.20f; // música discreta
@@ -124,8 +128,19 @@ public class GameScreen extends ScreenAdapter {
     private float diffHpMul     = 1f;     // HP
 
     // --- progressão por abates ---
-    private int killedTotal = 0;
-    private int currentKillTier = 0; // 1 tier a cada 20 kills
+    private int killedTotal = 104;
+    private int bossKilledTotal = 7;
+    private int currentKillTier = 0;
+
+    // Controle do boss especial
+    private boolean superBossSpawned = false;
+    private boolean bloqueiaSpawns = false; // NOVO: bloqueia spawns normais
+    private static final String SUPER_BOSS_PATH = "sprite_mob/finalBoss.png";
+    private float bossFinalSpawnTimer = -1f; // < 0 = não iniciou
+
+    private Music bridgeMusic, lastCastleMusic;
+    private boolean usingBridgeChain = false;
+    private boolean bridgeWasPlaying = false, lastCastleWasPlaying = false;
 
     public GameScreen(GameMain game) { this.game = game; }
 
@@ -158,8 +173,104 @@ public class GameScreen extends ScreenAdapter {
         // boss frames (1x4)
         loadBossFrames();
 
+        // Carrega música do boss final
+        finalBossMusic = loadMusicSmart("song/finalBoss");
+        if (finalBossMusic != null) {
+            finalBossMusic.setLooping(true);
+            finalBossMusic.setVolume(slider01() * MUSIC_GAIN);
+        }
+
         setDifficulty(difficulty);
         resetGame();
+    }
+
+    private void stopFinalBossMusic() {
+        if (finalBossMusic != null && finalBossMusicPlaying) {
+            finalBossMusic.stop();
+            finalBossMusicPlaying = false;
+        }
+    }
+
+    private void stopBridgeChain() {
+        usingBridgeChain = false;
+        if (bridgeMusic != null && bridgeMusic.isPlaying()) bridgeMusic.stop();
+        if (lastCastleMusic != null && lastCastleMusic.isPlaying()) lastCastleMusic.stop();
+    }
+
+    private void startBridgeChain() {
+        // mata tudo que possa estar tocando
+        if (playlist != null) for (Music m : playlist) if (m.isPlaying()) m.stop();
+        stopFinalBossMusic();
+
+        if (bridgeMusic == null) bridgeMusic = loadMusicSmart("song/bridge");
+        if (lastCastleMusic == null) lastCastleMusic = loadMusicSmart("song/lastCastle");
+
+        float vol = slider01() * MUSIC_GAIN;
+        if (bridgeMusic != null) { bridgeMusic.setLooping(false); bridgeMusic.setVolume(vol); }
+        if (lastCastleMusic != null){ lastCastleMusic.setLooping(false); lastCastleMusic.setVolume(vol); }
+
+        usingBridgeChain = true;
+
+        if (bridgeMusic != null) {
+            bridgeMusic.setOnCompletionListener(new Music.OnCompletionListener() {
+                @Override public void onCompletion(Music music) {
+                    if (usingBridgeChain && lastCastleMusic != null) {
+                        lastCastleMusic.play();
+                    }
+                }
+            });
+            bridgeMusic.play();
+        } else if (lastCastleMusic != null) {
+            lastCastleMusic.play();
+        } else {
+            // não achou nenhuma: volta pra playlist normal
+            usingBridgeChain = false;
+            playCurrent();
+        }
+    }
+
+    private Enemy findAliveBoss() {
+        for (int i = 0; i < enemies.size; i++) {
+            Enemy e = enemies.get(i);
+            if (e.isBoss && e.hp > 0) return e;
+        }
+        return null;
+    }
+
+    private void drawBossHealthBar(Enemy boss) {
+        float sw = Gdx.graphics.getWidth();
+        float sh = Gdx.graphics.getHeight();
+
+        float barW = sw * 0.6f;
+        float barH = 18f;
+        float x = (sw - barW) * 0.5f;
+        float y = sh - 42f; // margem do topo
+
+        float pct = boss.maxHp > 0 ? Math.max(0f, Math.min(1f, boss.hp / (float) boss.maxHp)) : 0f;
+
+        // fundo + preenchimento
+        shapes.setProjectionMatrix(batch.getProjectionMatrix());
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.setColor(0f, 0f, 0f, 0.55f); // fundo escuro
+        shapes.rect(x, y, barW, barH);
+        shapes.setColor(0.85f, 0.2f, 0.25f, 1f); // vermelho da vida
+        shapes.rect(x, y, barW * pct, barH);
+        shapes.end();
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+
+        // texto (BOSS 83/120) centralizado acima da barra
+        batch.begin();
+        font.getData().setScale(1.0f);
+        font.setColor(Color.WHITE);
+        String label = "BOSS " + Math.max(0, boss.hp) + " / " + boss.maxHp;
+        com.badlogic.gdx.graphics.g2d.GlyphLayout gl =
+            new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, label);
+        float tx = x + (barW - gl.width) * 0.5f;
+        float ty = y + barH + 16f;
+        font.draw(batch, label, tx, ty);
+        batch.end();
     }
 
     /** Tenta carregar um Sound testando OGG → WAV → MP3. */
@@ -274,6 +385,9 @@ public class GameScreen extends ScreenAdapter {
         float slider = Math.max(0f, Math.min(1f, volumePercent / 100f));
         float vol = slider * MUSIC_GAIN;
         if (playlist != null) for (Music m : playlist) if (m != null) m.setVolume(vol);
+        if (bridgeMusic != null) bridgeMusic.setVolume(vol);
+        if (lastCastleMusic != null) lastCastleMusic.setVolume(vol);
+        if (finalBossMusic != null) finalBossMusic.setVolume(vol);
     }
 
     private void playCurrent() {
@@ -285,11 +399,12 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void stepMusicFallback(float dt) {
+        if (usingBridgeChain) return; // <- não mexe enquanto toca bridge/lastCastle
         if (!musicEnabled || playlist == null || playlist.length == 0) return;
         musicCheckTimer += dt;
         if (musicCheckTimer < 0.25f) return;
         musicCheckTimer = 0f;
-        if (paused) return; // não pular música enquanto pause visível
+        if (paused) return;
         Music m = playlist[currentTrack];
         if (!m.isPlaying()) {
             currentTrack = (currentTrack + 1) % playlist.length;
@@ -335,12 +450,25 @@ public class GameScreen extends ScreenAdapter {
         nextUpgradeAt = 7;
 
         killedTotal = 0;
+        bossKilledTotal = 0;
         currentKillTier = 0;
         GameLogic.setKillTier(0);
+
+        superBossSpawned = false;
+        bloqueiaSpawns = false; // NOVO: libera spawns ao resetar
 
         float cx = Gdx.graphics.getWidth()  / 2f;
         float cy = Gdx.graphics.getHeight() / 2f;
         player = new Player(new Vector2(cx, cy), makeDefaultStats());
+
+        superBossSpawned = false;
+        bloqueiaSpawns = false;
+        bossFinalSpawnTimer = -1f;
+
+        stopFinalBossMusic();
+        stopBridgeChain();
+        currentTrack = 0;
+        playCurrent();
     }
 
     // ===== Dificuldade =====
@@ -389,26 +517,48 @@ public class GameScreen extends ScreenAdapter {
         return n;
     }
 
+    private void drawCountersTopRight(SpriteBatch batch) {
+        final float margin = 20f;
+        float sw = Gdx.graphics.getWidth();
+        float sh = Gdx.graphics.getHeight();
+
+        String s1 = "Monstros: " + killedTotal + " / 105";
+        String s2 = "Bosses: "   + bossKilledTotal + " / 7";
+
+        com.badlogic.gdx.graphics.g2d.GlyphLayout l1 =
+            new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, s1);
+        com.badlogic.gdx.graphics.g2d.GlyphLayout l2 =
+            new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, s2);
+
+        float x = sw - margin - Math.max(l1.width, l2.width);
+        float y1 = sh - margin;
+        float y2 = y1 - (l1.height + 6f);
+
+        font.setColor(Color.WHITE);
+        font.draw(batch, s1, x, y1);
+        font.draw(batch, s2, x, y2);
+    }
+
     @Override public void render(float delta) {
-        // === ESC só abre o pause. Quando pausado, ESC é tratado em handlePauseInput().
-        if (!world.gameOver && !choosingUpgrade && !paused
-            && Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
-            paused = true;
-            pauseSub = PauseSub.ROOT;
-            pauseIndex = 0;
+        // ESC abre pause (se não estiver em upgrade/game over)
+        if (!paused && !choosingUpgrade && !world.gameOver) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
+                paused = true;
+                pauseSub = PauseSub.ROOT;
+                pauseIndex = 0;
+                return; // evita processar lógica deste frame
+            }
         }
 
-        // Em game over, só aceita ENTER/ESC do menu final
+        // Game Over: só trata enter/esc
         if (world.gameOver) {
             handleGameOverInput();
         } else {
             if (!choosingUpgrade && !paused) {
                 world.tick(delta);
-
-                // aplica tier atual (progressão por abates)
                 GameLogic.setKillTier(currentKillTier);
 
-                // cria balas + SFX tiro
+                // tiros
                 playerSystem.update(
                     player, delta, GameBridge.get().isAgentMode(), enemies,
                     Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
@@ -421,104 +571,161 @@ public class GameScreen extends ScreenAdapter {
                 updateBullets(delta);
                 updateEnemies(delta);
 
-                // ===== boss spawn SFX: detecta aumento no número de bosses
                 int bossesBeforeSpawn = countBoss(enemies);
 
-                spawner.update(
-                    delta * diffSpawnMul, world,
-                    Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
-                    enemies, world.elapsed, diffHpMul
-                );
+                // trava spawns quando bater os limites
+                if (!bloqueiaSpawns && killedTotal >= 105 && bossKilledTotal >= 7) {
+                    bloqueiaSpawns = true;
+                }
+                if (!bloqueiaSpawns) {
+                    spawner.update(
+                        delta * diffSpawnMul, world,
+                        Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
+                        enemies, world.elapsed, diffHpMul
+                    );
+                }
 
                 int bossesAfterSpawn = countBoss(enemies);
                 if (bossesAfterSpawn > bossesBeforeSpawn) {
-                    Gdx.app.log("SFX", "Boss nasceu → tocando spawnBoss");
                     playBossSpawnSfx();
                 }
 
-                // ===== colisões e upgrade por morte de boss
                 int enemiesBefore = enemies.size;
                 int bossCountBeforeCollisions = countBoss(enemies);
                 int hpBefore = player.hp;
 
                 boolean bossDiedByBullet = GameLogic.handleBulletEnemyCollisions(bullets, enemies, gems);
-                boolean playerTookTouch   = GameLogic.handleEnemyPlayerCollisions(
+                boolean playerTookTouch  = GameLogic.handleEnemyPlayerCollisions(
                     enemies, player, 40f, world.elapsed, diffDamageMul);
 
-                if (player.hp < hpBefore || playerTookTouch) {
-                    playHurtSfx();
-                }
+                if (player.hp < hpBefore || playerTookTouch) playHurtSfx();
 
                 int bossCountAfterCollisions = countBoss(enemies);
-                boolean bossDiedByCount = bossCountAfterCollisions < bossCountBeforeCollisions;
 
-                if ((bossDiedByBullet || bossDiedByCount) && !choosingUpgrade) {
-                    openUpgradeMenu();
-                }
-
-                // contar mortos para subir o tier
-                int removedThisFrame = Math.max(0, enemiesBefore - enemies.size);
-                if (removedThisFrame > 0) {
-                    killedTotal += removedThisFrame;
-                    int newTier = killedTotal / 20; // +1 tier a cada 20 mortos
-                    if (newTier > currentKillTier) {
-                        currentKillTier = newTier;
-                        GameLogic.setKillTier(currentKillTier);
-                        Gdx.app.log("TIER", "Novo kill tier: " + currentKillTier + " (kills=" + killedTotal + ")");
+                if (finalBossMusicPlaying && findAliveBoss() == null) {
+                    stopFinalBossMusic();
+                    if (!usingBridgeChain) {
+                        playCurrent(); // retoma playlist normal
                     }
                 }
 
-                // coleta (score só em gem)
+                if (bossCountAfterCollisions < bossCountBeforeCollisions) {
+                    bossKilledTotal += (bossCountBeforeCollisions - bossCountAfterCollisions);
+                }
+
+                // contabiliza mortos
+                int removedThisFrame = Math.max(0, enemiesBefore - enemies.size);
+                if (removedThisFrame > 0) {
+                    killedTotal += removedThisFrame;
+                    int newTier = killedTotal / 20;
+                    if (newTier > currentKillTier) {
+                        currentKillTier = newTier;
+                        GameLogic.setKillTier(currentKillTier);
+                    }
+                }
+
+                // spawn do boss final (limites atingidos e tela limpa)
+                if (!superBossSpawned
+                    && killedTotal >= 105
+                    && bossKilledTotal >= 7
+                    && enemies.size == 0) {
+
+                    if (bossFinalSpawnTimer < 0f) { // inicia só a espera
+                        if (playlist != null) {
+                            for (Music m : playlist) if (m.isPlaying()) m.stop();
+                        }
+                        bossFinalSpawnTimer = 5f;  // aguarda antes de spawnar
+                        bloqueiaSpawns = true;
+                    }
+                }
+
+// 2) Quando o timer chega a zero, spawna o SuperBoss com sprite específica
+                if (!superBossSpawned && bossFinalSpawnTimer >= 0f) {
+                    bossFinalSpawnTimer -= delta;
+                    if (bossFinalSpawnTimer <= 0f) {
+                        // toca a música do boss **na hora do spawn**
+                        if (finalBossMusic != null && !finalBossMusicPlaying) {
+                            finalBossMusic.play();
+                            finalBossMusicPlaying = true;
+                        }
+                        Enemy superBoss = Enemy.makeSuperBoss(
+                            new Vector2(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f),
+                            SUPER_BOSS_PATH
+                        );
+                        enemies.add(superBoss);
+                        superBossSpawned = true;
+                    }
+                }
+
+                if ((bossDiedByBullet || bossCountAfterCollisions < bossCountBeforeCollisions) && !choosingUpgrade) {
+                    openUpgradeMenu();
+                }
+
+                // coleta gem/score e upgrades por pontos
                 float pickR = player.r + (gemRegion != null ? gemRegion.getRegionWidth() * gemScale * 0.35f : 6f);
                 int gained = GameLogic.pickGems(gems, player, pickR, 1);
                 world.score += gained;
 
-                // upgrade por pontos
                 if (world.score >= nextUpgradeAt && !choosingUpgrade) {
                     openUpgradeMenu();
                 }
 
+                // morreu de vez
                 if (player.hp <= 0 && !player.tryRevive(Gdx.graphics.getWidth(), Gdx.graphics.getHeight())) {
+
                     world.gameOver = true;
-                    paused = false;          // garante que o pause não bloqueie inputs
-                    choosingUpgrade = false; // fecha overlay de upgrade se estava aberto
+                    paused = false;
+                    choosingUpgrade = false;
+                    // música pós-morte: bridge -> lastCastle
+                    if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
+                        startBridgeChain();
+                    }
+
                 }
+
             } else if (choosingUpgrade && !paused) {
                 handleUpgradeChoiceInput();
             }
         }
 
-        // input de navegação dos menus quando pausado
+        // input de navegação do pause
         if (paused) handlePauseInput();
 
-        // Música: listener + fallback
-        stepMusicFallback(delta);
+        // Música normal só se não for a do boss final
+        if (!finalBossMusicPlaying) stepMusicFallback(delta);
 
-        // ===== DRAW =====
+        // ====== DRAW ======
         Gdx.gl.glClearColor(0.05f, 0.06f, 0.09f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // 1) Chão + Gem
         batch.setColor(Color.WHITE);
         batch.begin();
+
+        // fundo e pickups
         drawFloorTiled(batch);
         drawGems(batch);
-        batch.end();
 
-        // 2) Inimigos + BALAS + Player + HUD
-        batch.setColor(Color.WHITE);
-        batch.begin();
+        // contadores (sempre dentro do begin!)
+        drawCountersTopRight(batch);
+
+        // entidades + HUD
         for (Bullet b : bullets) b.render(batch, delta);
         for (Enemy e : enemies)  e.render(batch, delta);
         player.render(batch, delta);
         hud.renderTopLeft(batch, player, world.score, GameBridge.get().isAgentMode());
         if (world.gameOver) hud.renderGameOver(batch);
+
         batch.end();
 
-        // 3) Overlays
+        // overlays (cada um abre/fecha seu begin/end)
         if (choosingUpgrade) drawUpgradeOverlay();
         if (paused)         drawPauseOverlay();
+        Enemy bossForBar = findAliveBoss();
+        if (bossForBar != null) {
+            drawBossHealthBar(bossForBar);
+        }
     }
+
 
     private void drawFloorTiled(SpriteBatch batch) {
         if (floorRegion == null) return;
@@ -759,6 +966,17 @@ public class GameScreen extends ScreenAdapter {
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
             || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
+            // Pare a música do jogo antes de ir para o lobby
+            if (playlist != null) {
+                for (Music m : playlist) {
+                    if (m.isPlaying()) m.stop();
+                }
+            }
+            // Pare a música do boss final também
+            if (finalBossMusic != null && finalBossMusic.isPlaying()) {
+                finalBossMusic.stop();
+                finalBossMusicPlaying = false;
+            }
             game.setScreen(new MenuScreen(game));
         }
     }
@@ -818,11 +1036,28 @@ public class GameScreen extends ScreenAdapter {
                 if (m.isPlaying()) m.pause();
             }
         }
+        if (finalBossMusic != null && finalBossMusic.isPlaying()) {
+            finalBossMusic.pause();
+        }
+        if (usingBridgeChain) {
+            bridgeWasPlaying = bridgeMusic != null && bridgeMusic.isPlaying();
+            lastCastleWasPlaying = lastCastleMusic != null && lastCastleMusic.isPlaying();
+            if (bridgeMusic != null && bridgeMusic.isPlaying()) bridgeMusic.pause();
+            if (lastCastleMusic != null && lastCastleMusic.isPlaying()) lastCastleMusic.pause();
+        }
     }
 
     @Override public void resume() {
-        if (musicEnabled && playlist != null && playlist.length > 0) {
+        if (usingBridgeChain) {
+            if (bridgeWasPlaying && bridgeMusic != null) bridgeMusic.play();
+            if (lastCastleWasPlaying && lastCastleMusic != null) lastCastleMusic.play();
+            return; // não mexe na playlist quando cadeia ativa
+        }
+        if (musicEnabled && playlist != null && playlist.length > 0 && !finalBossMusicPlaying) {
             playlist[currentTrack].play();
+        }
+        if (finalBossMusic != null && finalBossMusicPlaying) {
+            finalBossMusic.play();
         }
     }
 
@@ -846,5 +1081,9 @@ public class GameScreen extends ScreenAdapter {
         if (sfxShoot     != null) sfxShoot.dispose();
         if (sfxHurt      != null) sfxHurt.dispose();
         if (sfxBossSpawn != null) sfxBossSpawn.dispose();
+        if (finalBossMusic != null) {
+            finalBossMusic.stop();
+            finalBossMusic.dispose();
+        }
     }
 }
