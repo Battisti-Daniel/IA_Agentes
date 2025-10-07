@@ -1,19 +1,14 @@
 package io.github.agentSurvivor.bridge;
 
-import com.badlogic.gdx.math.RandomXS128;
-
-public class GameBridge {
-    private static final GameBridge I = new GameBridge();
-    private boolean agentMode = false;
-    private final RandomXS128 rng = new RandomXS128();
+/** Stub simples só para compilar e manter o menu/hud como estão. */
+public final class GameBridge {
+    private static final GameBridge INSTANCE = new GameBridge();
+    private volatile boolean agentMode = false;
 
     private GameBridge() {}
 
-    public static GameBridge get() { return I; }
-
-    public void setAgentMode(boolean on) { agentMode = on; }
+    public static GameBridge get() { return INSTANCE; }
 
     public boolean isAgentMode() { return agentMode; }
-
-    public RandomXS128 rng() { return rng; }
+    public void setAgentMode(boolean enabled) { this.agentMode = enabled; }
 }

@@ -1,45 +1,48 @@
 package io.github.agentSurvivor.sma.agents;
 
-import jade.core.Agent;
 import jade.core.AID;
-import jade.lang.acl.ACLMessage;
+import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.TickerBehaviour;
+import jade.lang.acl.ACLMessage;
 
+/** Exemplo simples: monitora # de inimigos e pode pedir spawns. */
 public class MonsterAgent extends Agent {
     public static final String NAME = "monster";
 
-    private int living = 0, totalSpawned = 0, totalDead = 0;
+    private int alive = 0;
+    private boolean finalGateClosed = false; // quando atingir 105/7, para tudo
 
-    @Override protected void setup() {
-        // Lê eventos do jogo
+    @Override
+    protected void setup() {
+        // Recebe eventos do coordenador
         addBehaviour(new CyclicBehaviour(this) {
             @Override public void action() {
-                ACLMessage m = receive();
-                if (m == null) { block(); return; }
-                if (!CoordinatorAgent.ONT_EVENT.equals(m.getOntology())) return;
+                ACLMessage msg = myAgent.receive();
+                if (msg == null) { block(); return; }
+                String ev = msg.getContent();
 
-                String c = m.getContent();
-                if (c.contains("\"type\":\"MONSTER_SPAWNED\"")) { living++; totalSpawned++; }
-                else if (c.contains("\"type\":\"MONSTER_DIED\"")) { if (living > 0) living--; totalDead++; }
-                else if (c.contains("\"type\":\"GAME_RESET\"")) { living = 0; totalSpawned = 0; totalDead = 0; requestSpawn(5); }
+                if ("ENEMY_SPAWNED".equals(ev)) alive++;
+                else if ("ENEMY_KILLED".equals(ev) && alive > 0) alive--;
+                else if ("BOSS_SPAWNED".equals(ev)) alive++; // conta o boss na banda
+                else if ("GAME_RESET".equals(ev)) { alive = 0; finalGateClosed = false; }
+
+                // Apenas log (estilo "Bombeiro")
+                System.out.println("[" + getLocalName() + "] estado: alive=" + alive);
             }
         });
 
-        // Mantém população mínima
-        addBehaviour(new TickerBehaviour(this, 1000) {
+        // Ritmo de checagem para (eventualmente) pedir spawns ao jogo
+        addBehaviour(new TickerBehaviour(this, 500) {
             @Override protected void onTick() {
-                int min = 6;
-                if (living < min) requestSpawn(Math.max(1, min - living));
+                if (finalGateClosed) return;    // quando o jogo travar spawns, não pede mais
+                if (alive < 8) {                // alvo simples de 8 inimigos
+                    ACLMessage req = new ACLMessage(ACLMessage.REQUEST);
+                    req.setContent("CMD|SPAWN_BASIC|count=" + (8 - alive));
+                    req.addReceiver(new AID(CoordinatorAgent.NAME, AID.ISLOCALNAME));
+                    send(req);
+                }
             }
         });
-    }
-
-    private void requestSpawn(int count) {
-        ACLMessage req = new ACLMessage(ACLMessage.INFORM);
-        req.setOntology(CoordinatorAgent.ONT_CMD);
-        req.setContent("{\"cmd\":\"REQUEST_SPAWN\",\"count\":" + count + "}");
-        req.addReceiver(new AID(CoordinatorAgent.NAME, AID.ISLOCALNAME));
-        send(req);
     }
 }

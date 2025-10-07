@@ -1,36 +1,39 @@
 package io.github.agentSurvivor.sma.agents;
 
-import jade.core.Agent;
 import jade.core.AID;
-import jade.lang.acl.ACLMessage;
+import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
+import jade.lang.acl.ACLMessage;
 
+/** Decide música conforme eventos (boss final, morte do player, etc.). */
 public class MusicAgent extends Agent {
     public static final String NAME = "music";
 
-    @Override protected void setup() {
+    @Override
+    protected void setup() {
         addBehaviour(new CyclicBehaviour(this) {
             @Override public void action() {
-                ACLMessage m = receive();
-                if (m == null) { block(); return; }
-                if (!CoordinatorAgent.ONT_EVENT.equals(m.getOntology())) return;
+                ACLMessage msg = myAgent.receive();
+                if (msg == null) { block(); return; }
+                String ev = msg.getContent();
 
-                String c = m.getContent();
-                ACLMessage out = new ACLMessage(ACLMessage.INFORM);
-                out.setOntology(CoordinatorAgent.ONT_CMD);
-
-                if (c.contains("\"type\":\"PLAYER_DIED\"")) {
-                    out.setContent("{\"cmd\":\"MUSIC\",\"action\":\"sequence\"}");
-                } else if (c.contains("\"type\":\"FINAL_BOSS_SPAWNED\"")) {
-                out.setContent("{\"cmd\":\"MUSIC\",\"action\":\"play\",\"finalBoss\":true}");
-                } else if (c.contains("\"type\":\"GAME_RESET\"")) {
-                    out.setContent("{\"cmd\":\"MUSIC\",\"action\":\"resume-playlist\"}");
-                } else {
-                    return;
+                if ("GAME_RESET".equals(ev)) {
+                    sendToGame("MUSIC|stop");                // para qualquer música
+                } else if ("BOSS_SPAWNED".equals(ev)) {
+                    sendToGame("MUSIC|play|finalBoss");      // só toca no boss final real
+                } else if ("PLAYER_DIED".equals(ev)) {
+                    sendToGame("MUSIC|sequence");            // bridge → lastCastle
+                } else if ("ENEMY_KILLED".equals(ev)) {
+                    // nada por enquanto; aqui daria para aumentar volume dinamicamente, etc.
                 }
-                out.addReceiver(new AID(CoordinatorAgent.NAME, AID.ISLOCALNAME));
-                send(out);
             }
         });
+    }
+
+    private void sendToGame(String cmd) {
+        ACLMessage out = new ACLMessage(ACLMessage.INFORM);
+        out.setContent(cmd);
+        out.addReceiver(new AID(GameBridgeAgent.NAME, AID.ISLOCALNAME));
+        send(out);
     }
 }

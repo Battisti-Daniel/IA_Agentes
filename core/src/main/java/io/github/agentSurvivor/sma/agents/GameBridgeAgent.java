@@ -1,36 +1,37 @@
 package io.github.agentSurvivor.sma.agents;
 
-import jade.core.Agent;
 import jade.core.AID;
-import jade.lang.acl.ACLMessage;
+import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.TickerBehaviour;
+import jade.lang.acl.ACLMessage;
 
+/** Envia eventos do jogo ao coordenador e devolve comandos dos agentes para o jogo. */
 public class GameBridgeAgent extends Agent {
-    public static final String NAME = "bridge";
 
-    @Override protected void setup() {
-        // Bombeia eventos do jogo para o Coordinator
-        addBehaviour(new TickerBehaviour(this, 50) {
+    public static final String NAME = "game-bridge";
+
+    @Override
+    protected void setup() {
+        // Jogo → Agentes (como o AgenteAlarmado dos exemplos)
+        addBehaviour(new TickerBehaviour(this, 80) {
             @Override protected void onTick() {
-                String ev;
-                while ((ev = SmaGateway.pollEventForSMA()) != null) {
-                    ACLMessage m = new ACLMessage(ACLMessage.INFORM);
-                    m.setOntology(CoordinatorAgent.ONT_EVENT);
-                    m.setContent(ev);
-                    m.addReceiver(new AID(CoordinatorAgent.NAME, AID.ISLOCALNAME));
-                    send(m);
+                String evt;
+                while ((evt = SmaGateway.pollEventFromGame()) != null) {
+                    ACLMessage out = new ACLMessage(ACLMessage.INFORM);
+                    out.setContent(evt); // pode ser "Fogo" ou JSON {"type":"..."}
+                    out.addReceiver(new AID(CoordinatorAgent.NAME, AID.ISLOCALNAME));
+                    send(out);
                 }
             }
         });
 
-        // Recebe comandos do Coordinator e empurra para o jogo
+        // Agentes → Jogo (entram como comandos)
         addBehaviour(new CyclicBehaviour(this) {
             @Override public void action() {
-                ACLMessage in = receive();
+                ACLMessage in = myAgent.receive();
                 if (in == null) { block(); return; }
-                if (!CoordinatorAgent.ONT_CMD.equals(in.getOntology())) return;
-                SmaGateway.emitCommandFromSMA(in.getContent());
+                SmaGateway.emitCommandFromAgents(in.getContent());
             }
         });
     }

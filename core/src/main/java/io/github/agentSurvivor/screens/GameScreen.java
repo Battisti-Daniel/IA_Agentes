@@ -31,7 +31,6 @@ public class GameScreen extends ScreenAdapter {
     private final GameMain game;
 
     private boolean inFinalBossSequence = false;
-
     private boolean finalPrereqsMet = false;
 
     // chão
@@ -85,6 +84,13 @@ public class GameScreen extends ScreenAdapter {
 
     // Volume mestre (0–100) controlado no menu Opções
     private int volumePercent = 15;
+
+    // === Relato de decisões do modo AGENTE ===
+    private float agentReportTimer = 0f;
+    private static final float AGENT_REPORT_EVERY = 0.6f; // a cada ~0.6s
+
+    // (opcional) snapshots periódicos do mundo
+    private float snapshotTimer = 0f;
 
     // entidades
     private Player player;
@@ -151,6 +157,9 @@ public class GameScreen extends ScreenAdapter {
     private Music bridgeMusic, lastCastleMusic;
     private boolean usingBridgeChain = false;
     private boolean bridgeWasPlaying = false, lastCastleWasPlaying = false;
+
+    // ----- Auto-play do modo AGENTE -----
+    private float agentShootTimer = 0f;
 
     public GameScreen(GameMain game) { this.game = game; }
 
@@ -540,7 +549,7 @@ public class GameScreen extends ScreenAdapter {
         float sh = Gdx.graphics.getHeight();
 
         String s1 = "Monstros: " + killedTotal + " / 105";
-        String s2 = "Bosses: "   + bossKilledTotal + " / 7";
+        String s2 = "Bosses: "   + bossKilledTotal + " / 5";
 
         com.badlogic.gdx.graphics.g2d.GlyphLayout l1 =
             new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, s1);
@@ -573,19 +582,66 @@ public class GameScreen extends ScreenAdapter {
         } else {
             if (!choosingUpgrade && !paused) {
                 world.tick(delta);
+
+                // Snapshot do mundo a cada 1s (bom para os agentes e para o relatório)
+                snapshotTimer += delta;
+                if (snapshotTimer >= 1.0f) {
+                    snapshotTimer = 0f;
+                    String snap =
+                        "{\"type\":\"WORLD_SNAPSHOT\",\"time\":"+
+                            String.format(java.util.Locale.US,"%.1f", world.elapsed)+
+                            ",\"player\":{\"hp\":"+player.hp+",\"lives\":"+player.lives+",\"score\":"+world.score+"},"+
+                            "\"enemies\":"+enemies.size+",\"bosses\":"+countBoss(enemies)+
+                            ",\"killedTotal\":"+killedTotal+",\"bossKilledTotal\":"+bossKilledTotal+
+                            ",\"spawnLocked\":"+bloqueiaSpawns+
+                            ",\"difficulty\":"+diffIndex+
+                            ",\"agentMode\":"+GameBridge.get().isAgentMode()+
+                            "}";
+                    emit(snap);
+                }
+
                 GameLogic.setKillTier(currentKillTier);
 
-                // tiros
-                playerSystem.update(
-                    player, delta, GameBridge.get().isAgentMode(), enemies,
-                    Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
-                    (origin, velocity) -> {
-                        bullets.add(new Bullet(new Vector2(origin), new Vector2(velocity)));
-                        playShootSfx();
-                        // >>> Evento para o SMA
-                        emit("{\"type\":\"PLAYER_SHOT\"}");
+                // ===== CONTROLE DO PLAYER =====
+                boolean agentModeNow = GameBridge.get().isAgentMode();
+                if (agentModeNow) {
+                    // Decisão observada
+                    AgentDecision d = observeAgentDecision();
+
+                    // Log periódico da decisão
+                    agentReportTimer += delta;
+                    if (agentReportTimer >= AGENT_REPORT_EVERY) {
+                        agentReportTimer = 0f;
+                        reportAgentDecision(d);
                     }
-                );
+
+                    // Movimento
+                    float spd = player.stats.moveSpeed;
+                    player.pos.mulAdd(d.move, spd * delta);
+
+                    // Limitar à tela
+                    float r = player.r;
+                    player.pos.x = MathUtils.clamp(player.pos.x, r, Gdx.graphics.getWidth()  - r);
+                    player.pos.y = MathUtils.clamp(player.pos.y, r, Gdx.graphics.getHeight() - r);
+
+                    // Tiro com cooldown e direção de mira
+                    agentShootTimer -= delta;
+                    if (d.willShoot && agentShootTimer <= 0f && d.aim.len2() > 1e-6f) {
+                        fireAgentShot(d.aim);
+                        agentShootTimer = player.stats.fireCooldown;
+                    }
+                } else {
+                    // Controle humano pelo teclado
+                    playerSystem.update(
+                        player, delta, false, enemies,
+                        Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
+                        (origin, velocity) -> {
+                            bullets.add(new Bullet(new Vector2(origin), new Vector2(velocity)));
+                            playShootSfx();
+                            emit("{\"type\":\"PLAYER_SHOT\"}");
+                        }
+                    );
+                }
 
                 updateBullets(delta);
                 updateEnemies(delta);
@@ -597,7 +653,7 @@ public class GameScreen extends ScreenAdapter {
                 // trava spawns quando bater os limites
                 if (!bloqueiaSpawns && killedTotal >= 105) {
                     bloqueiaSpawns = true;
-                    finalPrereqsMet = true; // libera etapa final (seu fluxo de boss final usa essa flag)
+                    finalPrereqsMet = true; // libera etapa final
                     spawner.reset();
                 }
 
@@ -655,7 +711,7 @@ public class GameScreen extends ScreenAdapter {
                 // spawn do boss final (limites atingidos e tela limpa)
                 if (!superBossSpawned
                     && killedTotal >= 105
-                    && bossKilledTotal >= 7
+                    && bossKilledTotal >= 5
                     && enemies.size == 0) {
 
                     if (bossFinalSpawnTimer < 0f) { // inicia só a espera
@@ -1084,6 +1140,87 @@ public class GameScreen extends ScreenAdapter {
         batch.end();
     }
 
+    // --- estrutura usada só para o log/relato
+    private static class AgentDecision {
+        String mode;             // "kite", "collect", "hunt", "idle"
+        Vector2 move = new Vector2();
+        Vector2 aim  = new Vector2();
+        float distToThreat;
+        int enemiesAround;
+        boolean willShoot;
+    }
+
+    // Observa o estado atual e deduz a "decisão" que um agente simples tomaria
+    private AgentDecision observeAgentDecision() {
+        AgentDecision d = new AgentDecision();
+
+        if (enemies.size == 0) {
+            d.mode = "collect";
+            d.willShoot = false;
+
+            Vector2 nearestGem = null;
+            float gd = Float.MAX_VALUE;
+            for (Vector2 g : gems) {
+                float dst2 = g.dst2(player.pos);
+                if (dst2 < gd) { gd = dst2; nearestGem = g; }
+            }
+            if (nearestGem != null) {
+                d.move.set(nearestGem).sub(player.pos).limit(1f);
+                d.aim.setZero();
+            } else {
+                d.mode = "idle";
+                d.move.setZero();
+            }
+            return d;
+        }
+
+        // inimigo mais próximo
+        Enemy closest = null;
+        float best2 = Float.MAX_VALUE;
+        for (Enemy e : enemies) {
+            float dst2 = e.pos.dst2(player.pos);
+            if (dst2 < best2) { best2 = dst2; closest = e; }
+        }
+        float dMin = (float)Math.sqrt(best2);
+        d.distToThreat = dMin;
+        d.enemiesAround = enemies.size;
+
+        if (closest != null) d.aim.set(closest.pos).sub(player.pos).nor();
+
+        // regras simples: kitar se perto; coletar se seguro e tiver gemas; senão caçar
+        if (dMin < 140f) {
+            d.mode = "kite";
+            d.move.set(player.pos).sub(closest.pos).limit(1f); // fugir
+            d.willShoot = true;
+        } else if (gems.size > 0 && dMin > 250f) {
+            d.mode = "collect";
+            Vector2 tgt = null; float gd2 = Float.MAX_VALUE;
+            for (Vector2 g : gems) {
+                float dst2 = g.dst2(player.pos);
+                if (dst2 < gd2) { gd2 = dst2; tgt = g; }
+            }
+            if (tgt != null) d.move.set(tgt).sub(player.pos).limit(1f);
+            d.willShoot = false;
+        } else {
+            d.mode = "hunt";
+            d.move.set(d.aim).limit(1f);
+            d.willShoot = true;
+        }
+        return d;
+    }
+
+    private void reportAgentDecision(AgentDecision d) {
+        String json =
+            "{\"type\":\"AGENT_DECISION\",\"mode\":\""+d.mode+"\",\"move\":["+
+                String.format(java.util.Locale.US,"%.2f,%.2f", d.move.x, d.move.y)+
+                "],\"aim\":["+
+                String.format(java.util.Locale.US,"%.2f,%.2f", d.aim.x, d.aim.y)+
+                "],\"willShoot\":"+d.willShoot+","+
+                "\"distToThreat\":"+String.format(java.util.Locale.US,"%.1f",d.distToThreat)+","+
+                "\"enemies\":"+d.enemiesAround+"}";
+        emit(json);
+    }
+
     private void handleGameOverInput() {
         // garanta que nada do pause/upgrade atrapalhe
         paused = false;
@@ -1200,7 +1337,7 @@ public class GameScreen extends ScreenAdapter {
         if (player != null) player.dispose();
         for (Enemy e : enemies) e.dispose();
         if (floorTex != null) floorTex.dispose();
-        if (gemTex != null) gemTex.dispose();
+        if (gemTex != null) floorTex.dispose();
         if (bossTex != null) bossTex.dispose();
         Bullet.disposeShared();
 
@@ -1216,5 +1353,26 @@ public class GameScreen extends ScreenAdapter {
             finalBossMusic.stop();
             finalBossMusic.dispose();
         }
+    }
+
+    // ======== Disparo do agente ========
+    /** Dispara projéteis a partir da posição do player, com leve spread quando há multishot. */
+    private void fireAgentShot(Vector2 aimDir) {
+        Vector2 dir = new Vector2(aimDir).nor();
+        int n = Math.max(1, player.stats.projectilesPerShot);
+
+        // até ~25 graus de spread total para n projéteis
+        float maxSpreadDeg = Math.min(25f, 6f * (n - 1));
+        float maxSpreadRad = maxSpreadDeg * MathUtils.degreesToRadians;
+        float step = (n == 1) ? 0f : (maxSpreadRad * 2f) / (n - 1);
+        float start = -maxSpreadRad;
+
+        for (int i = 0; i < n; i++) {
+            float ang = start + i * step;
+            Vector2 v = new Vector2(dir).rotateRad(ang).scl(player.stats.bulletSpeed);
+            bullets.add(new Bullet(new Vector2(player.pos), v));
+        }
+        playShootSfx();
+        emit("{\"type\":\"PLAYER_SHOT\"}");
     }
 }
