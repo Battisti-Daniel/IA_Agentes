@@ -7,6 +7,7 @@ import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -15,6 +16,8 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
 
 import io.github.agentSurvivor.GameMain;
 import io.github.agentSurvivor.bridge.GameBridge;
@@ -29,6 +32,12 @@ import io.github.agentSurvivor.sma.agents.SmaGateway;
 
 public class GameScreen extends ScreenAdapter {
     private final GameMain game;
+
+    // ======== NOVO: câmera + viewport (mantém proporção) ========
+    private static final float VIRTUAL_W = 1280f;
+    private static final float VIRTUAL_H = 720f;
+    private OrthographicCamera camera;
+    private Viewport viewport;
 
     private boolean inFinalBossSequence = false;
     private boolean finalPrereqsMet = false;
@@ -114,14 +123,14 @@ public class GameScreen extends ScreenAdapter {
         new UpgradeOption(UpgradeOption.Type.HP,          "+10 HP",                   "Aumenta vida máxima e cura +10",   5),
         new UpgradeOption(UpgradeOption.Type.MOVE_SPEED,  "+5% Velocidade de mov.",  "Anda mais rápido",                 4),
         new UpgradeOption(UpgradeOption.Type.PROJ_SPEED,  "+10% Velocidade proj.",   "Projéteis viajam mais rápido",     3),
-        new UpgradeOption(UpgradeOption.Type.ATK_SPEED,   "+5% Velocidade de atk",   "Reduz o cooldown de tiro",         3),
+        new UpgradeOption(UpgradeOption.Type.ATK_SPEED,   "+10% Velocidade de atk",   "Reduz o cooldown de tiro",         3),
         new UpgradeOption(UpgradeOption.Type.EXTRA_BULLET,"+1 projétil por disparo", "Atira mais balas (máx. 6)",        2),
         new UpgradeOption(UpgradeOption.Type.EXTRA_LIFE,  "+1 Vida (revive)",        "Ganha chance extra de reviver",    1),
     };
 
     private boolean choosingUpgrade = false;
     private UpgradeOption[] currentChoices = new UpgradeOption[3];
-    private int nextUpgradeAt = 5;
+    private int nextUpgradeAt = 7;
 
     // ====== Pausa / Menus ======
     private boolean paused = false;
@@ -163,8 +172,19 @@ public class GameScreen extends ScreenAdapter {
 
     public GameScreen(GameMain game) { this.game = game; }
 
+    // ===== Helpers p/ consultar a área do "mundo" (virtual) =====
+    private int SW() { return Math.round(viewport.getWorldWidth()); }
+    private int SH() { return Math.round(viewport.getWorldHeight()); }
+
     @Override public void show() {
         io.github.agentSurvivor.sma.agents.SmaStarter.startIfNeeded();
+
+        // NOVO: câmera + viewport (mantém 1280x720 virtual)
+        camera = new OrthographicCamera();
+        viewport = new FitViewport(VIRTUAL_W, VIRTUAL_H, camera);
+        viewport.apply(true);
+        camera.position.set(VIRTUAL_W * 0.5f, VIRTUAL_H * 0.5f, 0f);
+
         shapes = new ShapeRenderer();
         batch  = new SpriteBatch();
         font   = new BitmapFont();
@@ -218,7 +238,6 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void startBridgeChain() {
-        // mata tudo que possa estar tocando
         if (playlist != null) for (Music m : playlist) if (m.isPlaying()) m.stop();
         stopFinalBossMusic();
 
@@ -234,16 +253,13 @@ public class GameScreen extends ScreenAdapter {
         if (bridgeMusic != null) {
             bridgeMusic.setOnCompletionListener(new Music.OnCompletionListener() {
                 @Override public void onCompletion(Music music) {
-                    if (usingBridgeChain && lastCastleMusic != null) {
-                        lastCastleMusic.play();
-                    }
+                    if (usingBridgeChain && lastCastleMusic != null) lastCastleMusic.play();
                 }
             });
             bridgeMusic.play();
         } else if (lastCastleMusic != null) {
             lastCastleMusic.play();
         } else {
-            // não achou nenhuma: volta pra playlist normal
             usingBridgeChain = false;
             playCurrent();
         }
@@ -258,30 +274,28 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void drawBossHealthBar(Enemy boss) {
-        float sw = Gdx.graphics.getWidth();
-        float sh = Gdx.graphics.getHeight();
+        float sw = SW();
+        float sh = SH();
 
         float barW = sw * 0.6f;
         float barH = 18f;
         float x = (sw - barW) * 0.5f;
         float y = sh - 42f; // margem do topo
 
-        // Enemy precisa ter 'maxHp' público para esta barra (como no ajuste anterior)
         float pct = boss.maxHp > 0 ? Math.max(0f, Math.min(1f, boss.hp / (float) boss.maxHp)) : 0f;
 
-        // fundo + preenchimento
-        shapes.setProjectionMatrix(batch.getProjectionMatrix());
+        shapes.setProjectionMatrix(camera.combined);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
-        shapes.setColor(0f, 0f, 0f, 0.55f); // fundo escuro
+        shapes.setColor(0f, 0f, 0f, 0.55f);
         shapes.rect(x, y, barW, barH);
-        shapes.setColor(0.85f, 0.2f, 0.25f, 1f); // vermelho da vida
+        shapes.setColor(0.85f, 0.2f, 0.25f, 1f);
         shapes.rect(x, y, barW * pct, barH);
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
-        // texto (BOSS 83/120) centralizado acima da barra
+        batch.setProjectionMatrix(camera.combined);
         batch.begin();
         font.getData().setScale(1.0f);
         font.setColor(Color.WHITE);
@@ -294,13 +308,8 @@ public class GameScreen extends ScreenAdapter {
         batch.end();
     }
 
-    /** Tenta carregar um Sound testando OGG → WAV → MP3. */
     private Sound loadSoundSmart(String baseNoExt) {
-        String[] candidates = new String[] {
-            baseNoExt + ".ogg",
-            baseNoExt + ".wav",
-            baseNoExt + ".mp3"
-        };
+        String[] candidates = new String[] { baseNoExt + ".ogg", baseNoExt + ".wav", baseNoExt + ".mp3" };
         for (String path : candidates) {
             try {
                 if (Gdx.files.internal(path).exists()) {
@@ -308,19 +317,14 @@ public class GameScreen extends ScreenAdapter {
                     Gdx.app.log("SFX", "Carregado: " + path);
                     return s;
                 }
-            } catch (Throwable t) {
-                // tenta próximo formato
-            }
+            } catch (Throwable t) { }
         }
         Gdx.app.error("SFX", "Falha ao carregar SFX para base: " + baseNoExt + " (tente .ogg ou .wav)");
         return null;
     }
 
     private Music loadMusicSmart(String baseNoExt) {
-        String[] candidates = new String[] {
-            baseNoExt + ".ogg",
-            baseNoExt + ".mp3"
-        };
+        String[] candidates = new String[] { baseNoExt + ".ogg", baseNoExt + ".mp3" };
         for (String path : candidates) {
             try {
                 if (Gdx.files.internal(path).exists()) {
@@ -328,9 +332,7 @@ public class GameScreen extends ScreenAdapter {
                     Gdx.app.log("MUSIC", "Carregado: " + path);
                     return m;
                 }
-            } catch (Throwable t) {
-                // tenta próximo
-            }
+            } catch (Throwable t) { }
         }
         Gdx.app.error("MUSIC", "Não encontrei: " + baseNoExt + " (.ogg/.mp3) em assets/");
         return null;
@@ -346,8 +348,6 @@ public class GameScreen extends ScreenAdapter {
 
     private void initMusic() {
         Array<Music> list = new Array<>();
-
-        // Varre pasta /song: adiciona .ogg/.mp3, exceto sons curtos e lobby
         try {
             com.badlogic.gdx.files.FileHandle dir = Gdx.files.internal("song");
             if (dir.exists() && dir.isDirectory()) {
@@ -359,7 +359,7 @@ public class GameScreen extends ScreenAdapter {
                     if (!ext.equals("ogg") && !ext.equals("mp3")) continue;
 
                     String base = f.nameWithoutExtension().toLowerCase();
-                    if (base.equals("lobby")) continue; // lobby toca no MenuScreen
+                    if (base.equals("lobby")) continue;
                     if (base.startsWith("hit") || base.contains("sfx") || base.contains("spawn")) continue;
 
                     try {
@@ -377,7 +377,6 @@ public class GameScreen extends ScreenAdapter {
             Gdx.app.error("MUSIC", "Erro listando a pasta 'song/'", t);
         }
 
-        // fallback se vazio
         if (list.size == 0) {
             Music m1 = loadMusicSmart("song/bridge");
             Music m2 = loadMusicSmart("song/lastCastle");
@@ -420,7 +419,7 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void stepMusicFallback(float dt) {
-        if (usingBridgeChain || inFinalBossSequence) return; // NÃO religar playlist nesse período
+        if (usingBridgeChain || inFinalBossSequence) return;
         if (!musicEnabled || playlist == null || playlist.length == 0) return;
         musicCheckTimer += dt;
         if (musicCheckTimer < 0.25f) return;
@@ -470,7 +469,7 @@ public class GameScreen extends ScreenAdapter {
         world.reset();
         spawner.reset();
         choosingUpgrade = false;
-        nextUpgradeAt = 5;
+        nextUpgradeAt = 7;
 
         killedTotal = 0;
         bossKilledTotal = 0;
@@ -478,10 +477,10 @@ public class GameScreen extends ScreenAdapter {
         GameLogic.setKillTier(0);
 
         superBossSpawned = false;
-        bloqueiaSpawns = false; // libera spawns ao resetar
+        bloqueiaSpawns = false;
 
-        float cx = Gdx.graphics.getWidth()  / 2f;
-        float cy = Gdx.graphics.getHeight() / 2f;
+        float cx = SW() / 2f;
+        float cy = SH() / 2f;
         player = new Player(new Vector2(cx, cy), makeDefaultStats());
 
         superBossSpawned = false;
@@ -493,41 +492,23 @@ public class GameScreen extends ScreenAdapter {
         currentTrack = 0;
         playCurrent();
 
-        // >>> Evento para o SMA
         emit("{\"type\":\"GAME_RESET\"}");
     }
 
-    // ===== Dificuldade =====
     private void setDifficulty(Difficulty d) {
         difficulty = d;
         switch (difficulty) {
             case FACIL:
-                diffIndex = 0;
-                diffSpawnMul = 0.85f;
-                diffSpeedMul = 0.90f;
-                diffDamageMul = 0.60f;
-                diffHpMul     = 0.80f;
-                break;
+                diffIndex = 0; diffSpawnMul = 0.85f; diffSpeedMul = 0.90f; diffDamageMul = 0.60f; diffHpMul = 0.80f; break;
             case MEDIANO:
-                diffIndex = 1;
-                diffSpawnMul = 1.00f;
-                diffSpeedMul = 1.00f;
-                diffDamageMul = 1.00f;
-                diffHpMul     = 1.00f;
-                break;
+                diffIndex = 1; diffSpawnMul = 1.00f; diffSpeedMul = 1.00f; diffDamageMul = 1.00f; diffHpMul = 1.00f; break;
             case DIFICIL:
-                diffIndex = 2;
-                diffSpawnMul = 1.20f;
-                diffSpeedMul = 1.15f;
-                diffDamageMul = 1.40f;
-                diffHpMul     = 1.35f;
-                break;
+                diffIndex = 2; diffSpawnMul = 1.20f; diffSpeedMul = 1.15f; diffDamageMul = 1.40f; diffHpMul = 1.35f; break;
         }
     }
 
     private float slider01() { return Math.max(0f, Math.min(1f, volumePercent / 100f)); }
 
-    // volume final do SFX = slider * SFX_GAIN * ganho_específico
     private float sfxVol(float perSfxGain) {
         float v = slider01() * SFX_GAIN * perSfxGain;
         return v > 1f ? 1f : v;
@@ -545,16 +526,14 @@ public class GameScreen extends ScreenAdapter {
 
     private void drawCountersTopRight(SpriteBatch batch) {
         final float margin = 20f;
-        float sw = Gdx.graphics.getWidth();
-        float sh = Gdx.graphics.getHeight();
+        float sw = SW();
+        float sh = SH();
 
         String s1 = "Monstros: " + killedTotal + " / 105";
-        String s2 = "Bosses: "   + bossKilledTotal + " / 5";
+        String s2 = "Bosses: "   + bossKilledTotal + " / 7";
 
-        com.badlogic.gdx.graphics.g2d.GlyphLayout l1 =
-            new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, s1);
-        com.badlogic.gdx.graphics.g2d.GlyphLayout l2 =
-            new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, s2);
+        com.badlogic.gdx.graphics.g2d.GlyphLayout l1 = new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, s1);
+        com.badlogic.gdx.graphics.g2d.GlyphLayout l2 = new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, s2);
 
         float x = sw - margin - Math.max(l1.width, l2.width);
         float y1 = sh - margin;
@@ -566,24 +545,30 @@ public class GameScreen extends ScreenAdapter {
     }
 
     @Override public void render(float delta) {
-        // ESC abre pause (se não estiver em upgrade/game over)
-        if (!paused && !choosingUpgrade && !world.gameOver) {
-            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
-                paused = true;
-                pauseSub = PauseSub.ROOT;
-                pauseIndex = 0;
-                return; // evita processar lógica deste frame
+        // ====== Toggle Fullscreen (F11) ======
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F11)) {
+            if (Gdx.graphics.isFullscreen()) {
+                Gdx.graphics.setWindowedMode((int)VIRTUAL_W, (int)VIRTUAL_H);
+            } else {
+                Gdx.graphics.setFullscreenMode(Gdx.graphics.getDisplayMode());
             }
         }
 
-        // Game Over: só trata enter/esc
+        // ESC abre pause
+        if (!paused && !choosingUpgrade && !world.gameOver) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
+                paused = true; pauseSub = PauseSub.ROOT; pauseIndex = 0;
+                return;
+            }
+        }
+
         if (world.gameOver) {
             handleGameOverInput();
         } else {
             if (!choosingUpgrade && !paused) {
                 world.tick(delta);
 
-                // Snapshot do mundo a cada 1s (bom para os agentes e para o relatório)
+                // Snapshot do mundo a cada 1s
                 snapshotTimer += delta;
                 if (snapshotTimer >= 1.0f) {
                     snapshotTimer = 0f;
@@ -605,36 +590,30 @@ public class GameScreen extends ScreenAdapter {
                 // ===== CONTROLE DO PLAYER =====
                 boolean agentModeNow = GameBridge.get().isAgentMode();
                 if (agentModeNow) {
-                    // Decisão observada
                     AgentDecision d = observeAgentDecision();
 
-                    // Log periódico da decisão
                     agentReportTimer += delta;
                     if (agentReportTimer >= AGENT_REPORT_EVERY) {
                         agentReportTimer = 0f;
                         reportAgentDecision(d);
                     }
 
-                    // Movimento
                     float spd = player.stats.moveSpeed;
                     player.pos.mulAdd(d.move, spd * delta);
 
-                    // Limitar à tela
                     float r = player.r;
-                    player.pos.x = MathUtils.clamp(player.pos.x, r, Gdx.graphics.getWidth()  - r);
-                    player.pos.y = MathUtils.clamp(player.pos.y, r, Gdx.graphics.getHeight() - r);
+                    player.pos.x = MathUtils.clamp(player.pos.x, r, SW() - r);
+                    player.pos.y = MathUtils.clamp(player.pos.y, r, SH() - r);
 
-                    // Tiro com cooldown e direção de mira
                     agentShootTimer -= delta;
                     if (d.willShoot && agentShootTimer <= 0f && d.aim.len2() > 1e-6f) {
                         fireAgentShot(d.aim);
                         agentShootTimer = player.stats.fireCooldown;
                     }
                 } else {
-                    // Controle humano pelo teclado
                     playerSystem.update(
                         player, delta, false, enemies,
-                        Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
+                        SW(), SH(),
                         (origin, velocity) -> {
                             bullets.add(new Bullet(new Vector2(origin), new Vector2(velocity)));
                             playShootSfx();
@@ -646,28 +625,24 @@ public class GameScreen extends ScreenAdapter {
                 updateBullets(delta);
                 updateEnemies(delta);
 
-                // ---- antes de possíveis spawns
                 int enemiesBeforeSpawns = enemies.size;
                 int bossesBeforeSpawn = countBoss(enemies);
 
-                // trava spawns quando bater os limites
                 if (!bloqueiaSpawns && killedTotal >= 105) {
                     bloqueiaSpawns = true;
-                    finalPrereqsMet = true; // libera etapa final
+                    finalPrereqsMet = true;
                     spawner.reset();
                 }
 
-                // Apenas UMA chamada ao spawner (já com multiplicador do SMA)
                 if (!bloqueiaSpawns) {
                     float spawnMul = diffSpawnMul * smaSpawnMul;
                     spawner.update(
                         delta * spawnMul, world,
-                        Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
+                        SW(), SH(),
                         enemies, world.elapsed, diffHpMul
                     );
                 }
 
-                // novos spawns que aconteceram neste frame
                 int spawnedNow = Math.max(0, enemies.size - enemiesBeforeSpawns);
                 for (int i = 0; i < spawnedNow; i++) emit("{\"type\":\"MONSTER_SPAWNED\"}");
 
@@ -678,7 +653,7 @@ public class GameScreen extends ScreenAdapter {
                         emit("{\"type\":\"BOSS_SPAWNED\"}");
                 }
 
-                int enemiesBefore = enemies.size; // para mortes após colisões
+                int enemiesBefore = enemies.size;
                 int bossCountBeforeCollisions = countBoss(enemies);
                 int hpBefore = player.hp;
 
@@ -693,7 +668,6 @@ public class GameScreen extends ScreenAdapter {
                     bossKilledTotal += (bossCountBeforeCollisions - bossCountAfterCollisions);
                 }
 
-                // contabiliza mortos
                 int removedThisFrame = Math.max(0, enemiesBefore - enemies.size);
                 if (removedThisFrame > 0) {
                     killedTotal += removedThisFrame;
@@ -708,42 +682,32 @@ public class GameScreen extends ScreenAdapter {
                     }
                 }
 
-                // spawn do boss final (limites atingidos e tela limpa)
                 if (!superBossSpawned
                     && killedTotal >= 105
-                    && bossKilledTotal >= 5
+                    && bossKilledTotal >= 7
                     && enemies.size == 0) {
 
-                    if (bossFinalSpawnTimer < 0f) { // inicia só a espera
-                        // Silencia tudo e impede o fallback de religar
-                        if (playlist != null) {
-                            for (Music m : playlist) if (m.isPlaying()) m.stop();
-                        }
-                        stopBridgeChain();          // garante que a sequência bridge/lastCastle não esteja tocando
-                        inFinalBossSequence = true; // trava o fallback
+                    if (bossFinalSpawnTimer < 0f) {
+                        if (playlist != null) for (Music m : playlist) if (m.isPlaying()) m.stop();
+                        stopBridgeChain();
+                        inFinalBossSequence = true;
 
-                        bossFinalSpawnTimer = 5f;   // aguarda antes de spawnar
+                        bossFinalSpawnTimer = 5f;
                         bloqueiaSpawns = true;
                     }
                 }
 
-                // Quando o timer chega a zero, spawna o SuperBoss
                 if (!superBossSpawned && bossFinalSpawnTimer >= 0f) {
                     bossFinalSpawnTimer -= delta;
                     if (bossFinalSpawnTimer <= 0f) {
-                        // música do boss pode ser comandada pelo MusicAgent; aqui ligamos só se ainda não estiver
                         if (finalBossMusic != null && !finalBossMusicPlaying) {
-                            // Segurança: pare qualquer música que porventura tenha voltado
-                            if (playlist != null) {
-                                for (Music m : playlist) if (m.isPlaying()) m.stop();
-                            }
+                            if (playlist != null) for (Music m : playlist) if (m.isPlaying()) m.stop();
                             stopBridgeChain();
-
                             finalBossMusic.play();
                             finalBossMusicPlaying = true;
                         }
                         Enemy superBoss = Enemy.makeSuperBoss(
-                            new Vector2(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f),
+                            new Vector2(SW() / 2f, SH() / 2f),
                             SUPER_BOSS_PATH
                         );
                         enemies.add(superBoss);
@@ -754,11 +718,10 @@ public class GameScreen extends ScreenAdapter {
                     }
                 }
 
-                if ((bossDiedByBullet || bossCountAfterCollisions < bossCountBeforeCollisions) && !choosingUpgrade) {
+                if ((bossDiedByBullet || countBoss(enemies) < bossCountBeforeCollisions) && !choosingUpgrade) {
                     openUpgradeMenu();
                 }
 
-                // coleta gem/score e upgrades por pontos
                 float pickR = player.r + (gemRegion != null ? gemRegion.getRegionWidth() * gemScale * 0.35f : 6f);
                 int gained = GameLogic.pickGems(gems, player, pickR, 1);
                 if (gained > 0) {
@@ -770,16 +733,12 @@ public class GameScreen extends ScreenAdapter {
                     openUpgradeMenu();
                 }
 
-                // morreu de vez
-                if (player.hp <= 0 && !player.tryRevive(Gdx.graphics.getWidth(), Gdx.graphics.getHeight())) {
+                if (player.hp <= 0 && !player.tryRevive(SW(), SH())) {
                     world.gameOver = true;
                     paused = false;
                     choosingUpgrade = false;
 
-                    // evento + comportamento padrão (cadeia bridge → lastCastle)
                     emit("{\"type\":\"PLAYER_DIED\"}");
-
-                    // padrão local (caso não haja MusicAgent rodando)
                     stopFinalBossMusic();
                     startBridgeChain();
                 }
@@ -789,30 +748,32 @@ public class GameScreen extends ScreenAdapter {
             }
         }
 
-        // comandos vindos do SMA (podem chegar a qualquer momento)
+        // comandos vindos do SMA
         consumeSmaCommands();
 
         // input de navegação do pause
         if (paused) handlePauseInput();
 
-        // Música normal só se não for a do boss final
         if (!finalBossMusicPlaying) stepMusicFallback(delta);
 
         // ====== DRAW ======
         Gdx.gl.glClearColor(0.05f, 0.06f, 0.09f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        // aplica viewport e projecções
+        viewport.apply();
+        camera.update();
+        batch.setProjectionMatrix(camera.combined);
+        shapes.setProjectionMatrix(camera.combined);
+
         batch.setColor(Color.WHITE);
         batch.begin();
 
-        // fundo e pickups
         drawFloorTiled(batch);
         drawGems(batch);
 
-        // contadores (sempre dentro do begin!)
         drawCountersTopRight(batch);
 
-        // entidades + HUD
         for (Bullet b : bullets) b.render(batch, delta);
         for (Enemy e : enemies)  e.render(batch, delta);
         player.render(batch, delta);
@@ -821,7 +782,6 @@ public class GameScreen extends ScreenAdapter {
 
         batch.end();
 
-        // overlays
         if (choosingUpgrade) drawUpgradeOverlay();
         if (paused)         drawPauseOverlay();
 
@@ -829,20 +789,16 @@ public class GameScreen extends ScreenAdapter {
         if (bossForBar != null) drawBossHealthBar(bossForBar);
     }
 
-    // ======= CONSUMO DE COMANDOS DO SMA =======
     private void consumeSmaCommands() {
         String cmd;
         while ((cmd = SmaGateway.pollCommandForGame()) != null) {
 
             if (cmd.contains("\"cmd\":\"REQUEST_SPAWN\"")) {
-                if (bloqueiaSpawns) {
-                    // ignorar pedidos de spawn quando travado (após 105 kills ou pós-boss final)
-                    continue;
-                }
+                if (bloqueiaSpawns) continue;
                 int count = parseInt(cmd, "count", 1);
                 for (int i = 0; i < count; i++) {
-                    float x = MathUtils.random(30f, Gdx.graphics.getWidth() - 30f);
-                    float y = MathUtils.random(30f, Gdx.graphics.getHeight() - 30f);
+                    float x = MathUtils.random(30f, SW() - 30f);
+                    float y = MathUtils.random(30f, SH() - 30f);
                     enemies.add(new Enemy(new Vector2(x, y)));
                     emit("{\"type\":\"MONSTER_SPAWNED\"}");
                 }
@@ -870,7 +826,6 @@ public class GameScreen extends ScreenAdapter {
         }
     }
 
-    // ===== Utilidades simples de parsing e emissão =====
     private static int parseInt(String json, String key, int defVal) {
         try {
             int ki = json.indexOf('\"' + key + '\"');
@@ -907,8 +862,8 @@ public class GameScreen extends ScreenAdapter {
         if (floorRegion == null) return;
         float tileW = floorRegion.getRegionWidth()  * floorScale;
         float tileH = floorRegion.getRegionHeight() * floorScale;
-        int cols = (int)Math.ceil(Gdx.graphics.getWidth()  / tileW) + 1;
-        int rows = (int)Math.ceil(Gdx.graphics.getHeight() / tileH) + 1;
+        int cols = (int)Math.ceil(SW() / tileW) + 1;
+        int rows = (int)Math.ceil(SH() / tileH) + 1;
 
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
@@ -932,7 +887,7 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void updateBullets(float dt) {
-        float w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+        float w = SW(), h = SH();
         for (int i = bullets.size - 1; i >= 0; i--) {
             Bullet b = bullets.get(i);
             b.update(dt);
@@ -946,12 +901,11 @@ public class GameScreen extends ScreenAdapter {
         float baseSpd = GameLogic.enemySpeed(world.elapsed, diffSpeedMul);
         for (int i = enemies.size - 1; i >= 0; i--) {
             Enemy e = enemies.get(i);
-            float local = baseSpd * (e.isBoss ? 1.15f : 1f); // boss corre um pouco mais
+            float local = baseSpd * (e.isBoss ? 1.15f : 1f);
             e.updateTowards(dt, player.pos, local);
         }
     }
 
-    // ====== LEVEL-UP ======
     private void openUpgradeMenu() {
         choosingUpgrade = true;
         currentChoices = rollThreeWeightedDistinct();
@@ -980,7 +934,7 @@ public class GameScreen extends ScreenAdapter {
                 player.stats.bulletSpeed *= 1.10f;
                 break;
             case ATK_SPEED:
-                player.stats.fireCooldown = Math.max(0.2f, player.stats.fireCooldown * 0.95f);
+                player.stats.fireCooldown = Math.max(0.2f, player.stats.fireCooldown * 0.90f);
                 break;
             case EXTRA_BULLET:
                 player.stats.projectilesPerShot = Math.min(6, player.stats.projectilesPerShot + 1);
@@ -990,7 +944,7 @@ public class GameScreen extends ScreenAdapter {
                 break;
         }
         choosingUpgrade = false;
-        nextUpgradeAt += 5;
+        nextUpgradeAt += 7;
     }
 
     private UpgradeOption[] rollThreeWeightedDistinct() {
@@ -1015,21 +969,16 @@ public class GameScreen extends ScreenAdapter {
     }
 
     @Override public void hide() {
-        // Para QUALQUER música do jogo quando sair desta tela
-        stopBridgeChain();        // pára bridge/lastCastle se estiverem tocando
-        stopFinalBossMusic();     // pára a trilha do boss final
-        if (playlist != null) {
-            for (Music m : playlist) {
-                if (m.isPlaying()) m.stop();
-            }
-        }
+        stopBridgeChain();
+        stopFinalBossMusic();
+        if (playlist != null) for (Music m : playlist) if (m.isPlaying()) m.stop();
     }
 
     private void drawUpgradeOverlay() {
-        int w = Gdx.graphics.getWidth();
-        int h = Gdx.graphics.getHeight();
+        int w = SW();
+        int h = SH();
 
-        shapes.setProjectionMatrix(batch.getProjectionMatrix());
+        shapes.setProjectionMatrix(camera.combined);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
@@ -1038,6 +987,7 @@ public class GameScreen extends ScreenAdapter {
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
+        batch.setProjectionMatrix(camera.combined);
         batch.begin();
         font.setColor(Color.WHITE);
         font.getData().setScale(1.1f);
@@ -1061,11 +1011,10 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void drawPauseOverlay() {
-        int w = Gdx.graphics.getWidth();
-        int h = Gdx.graphics.getHeight();
+        int w = SW();
+        int h = SH();
 
-        // fundo escuro
-        shapes.setProjectionMatrix(batch.getProjectionMatrix());
+        shapes.setProjectionMatrix(camera.combined);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
@@ -1074,6 +1023,7 @@ public class GameScreen extends ScreenAdapter {
         shapes.end();
         Gdx.gl.glDisable(GL20.GL_BLEND);
 
+        batch.setProjectionMatrix(camera.combined);
         batch.begin();
         font.setColor(Color.WHITE);
         font.getData().setScale(1.15f);
@@ -1111,18 +1061,15 @@ public class GameScreen extends ScreenAdapter {
             font.setColor(Color.LIGHT_GRAY);
             font.draw(batch, "Volume", 60, h - 110);
 
-            // slider simples 0..100
             int minX = 60, maxX = w - 80;
             int barY = h - 150;
             int barH = 14;
             int barW = maxX - minX;
 
-            // barra de fundo
+            shapes.setProjectionMatrix(camera.combined);
             shapes.begin(ShapeRenderer.ShapeType.Filled);
             shapes.setColor(0.25f, 0.25f, 0.25f, 1f);
             shapes.rect(minX, barY, barW, barH);
-
-            // preenchimento
             float pct = volumePercent / 100f;
             shapes.setColor(0.95f, 0.85f, 0.4f, 1f);
             shapes.rect(minX, barY, (int)(barW * pct), barH);
@@ -1140,9 +1087,8 @@ public class GameScreen extends ScreenAdapter {
         batch.end();
     }
 
-    // --- estrutura usada só para o log/relato
     private static class AgentDecision {
-        String mode;             // "kite", "collect", "hunt", "idle"
+        String mode;
         Vector2 move = new Vector2();
         Vector2 aim  = new Vector2();
         float distToThreat;
@@ -1150,7 +1096,6 @@ public class GameScreen extends ScreenAdapter {
         boolean willShoot;
     }
 
-    // Observa o estado atual e deduz a "decisão" que um agente simples tomaria
     private AgentDecision observeAgentDecision() {
         AgentDecision d = new AgentDecision();
 
@@ -1174,7 +1119,6 @@ public class GameScreen extends ScreenAdapter {
             return d;
         }
 
-        // inimigo mais próximo
         Enemy closest = null;
         float best2 = Float.MAX_VALUE;
         for (Enemy e : enemies) {
@@ -1187,10 +1131,9 @@ public class GameScreen extends ScreenAdapter {
 
         if (closest != null) d.aim.set(closest.pos).sub(player.pos).nor();
 
-        // regras simples: kitar se perto; coletar se seguro e tiver gemas; senão caçar
         if (dMin < 140f) {
             d.mode = "kite";
-            d.move.set(player.pos).sub(closest.pos).limit(1f); // fugir
+            d.move.set(player.pos).sub(closest.pos).limit(1f);
             d.willShoot = true;
         } else if (gems.size > 0 && dMin > 250f) {
             d.mode = "collect";
@@ -1222,25 +1165,16 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void handleGameOverInput() {
-        // garanta que nada do pause/upgrade atrapalhe
         paused = false;
         choosingUpgrade = false;
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
-            || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) || Gdx.input.isKeyJustPressed(Input.Keys.SPACE)) {
             resetGame();
             return;
         }
 
-        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
-            || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
-            // Pare a música do jogo antes de ir para o lobby
-            if (playlist != null) {
-                for (Music m : playlist) {
-                    if (m.isPlaying()) m.stop();
-                }
-            }
-            // Pare a música do boss final também
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
+            if (playlist != null) for (Music m : playlist) if (m.isPlaying()) m.stop();
             if (finalBossMusic != null && finalBossMusic.isPlaying()) {
                 finalBossMusic.stop();
                 finalBossMusicPlaying = false;
@@ -1256,19 +1190,17 @@ public class GameScreen extends ScreenAdapter {
             if (Gdx.input.isKeyJustPressed(Input.Keys.UP))   pauseIndex = (pauseIndex + 3 - 1) % 3;
             if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) pauseIndex = (pauseIndex + 1) % 3;
 
-            // ENTER escolhe, ESC fecha o pause
             if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
-                if (pauseIndex == 0) { // Resume
+                if (pauseIndex == 0) {
                     paused = false;
-                } else if (pauseIndex == 1) { // Dificuldade
+                } else if (pauseIndex == 1) {
                     pauseSub = PauseSub.DIFFICULTY;
-                } else { // Opções
+                } else {
                     pauseSub = PauseSub.OPTIONS;
                 }
             }
-            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
-                || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
-                paused = false; // ESC no root fecha o pause
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
+                paused = false;
             }
 
         } else if (pauseSub == PauseSub.DIFFICULTY) {
@@ -1279,9 +1211,7 @@ public class GameScreen extends ScreenAdapter {
                 setDifficulty(diffIndex == 0 ? Difficulty.FACIL : diffIndex == 1 ? Difficulty.MEDIANO : Difficulty.DIFICIL);
                 pauseSub = PauseSub.ROOT;
             }
-            // ESC/Back volta pro root (não fecha direto)
-            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
-                || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
                 pauseSub = PauseSub.ROOT;
             }
 
@@ -1289,7 +1219,6 @@ public class GameScreen extends ScreenAdapter {
             if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT))  { volumePercent = Math.max(0,   volumePercent - 5); applyVolumesToMusic(); }
             if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)) { volumePercent = Math.min(100, volumePercent + 5); applyVolumesToMusic(); }
 
-            // ENTER/ESC/Back volta pro root (não fecha direto)
             if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)
                 || Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)
                 || Gdx.input.isKeyJustPressed(Input.Keys.BACK)) {
@@ -1299,14 +1228,8 @@ public class GameScreen extends ScreenAdapter {
     }
 
     @Override public void pause() {
-        if (playlist != null) {
-            for (Music m : playlist) {
-                if (m.isPlaying()) m.pause();
-            }
-        }
-        if (finalBossMusic != null && finalBossMusic.isPlaying()) {
-            finalBossMusic.pause();
-        }
+        if (playlist != null) for (Music m : playlist) if (m.isPlaying()) m.pause();
+        if (finalBossMusic != null && finalBossMusic.isPlaying()) finalBossMusic.pause();
         if (usingBridgeChain) {
             bridgeWasPlaying = bridgeMusic != null && bridgeMusic.isPlaying();
             lastCastleWasPlaying = lastCastleMusic != null && lastCastleMusic.isPlaying();
@@ -1319,13 +1242,20 @@ public class GameScreen extends ScreenAdapter {
         if (usingBridgeChain) {
             if (bridgeWasPlaying && bridgeMusic != null) bridgeMusic.play();
             if (lastCastleWasPlaying && lastCastleMusic != null) lastCastleMusic.play();
-            return; // não mexe na playlist quando cadeia ativa
+            return;
         }
         if (musicEnabled && playlist != null && playlist.length > 0 && !finalBossMusicPlaying) {
             playlist[currentTrack].play();
         }
         if (finalBossMusic != null && finalBossMusicPlaying) {
             finalBossMusic.play();
+        }
+    }
+
+    // ====== IMPORTANTE: atualizar viewport quando a janela muda ======
+    @Override public void resize (int width, int height) {
+        if (viewport != null) {
+            viewport.update(width, height, true); // true = recentra a câmera
         }
     }
 
@@ -1337,7 +1267,7 @@ public class GameScreen extends ScreenAdapter {
         if (player != null) player.dispose();
         for (Enemy e : enemies) e.dispose();
         if (floorTex != null) floorTex.dispose();
-        if (gemTex != null) floorTex.dispose();
+        if (gemTex != null) gemTex.dispose(); // <-- corrigido
         if (bossTex != null) bossTex.dispose();
         Bullet.disposeShared();
 
@@ -1356,12 +1286,10 @@ public class GameScreen extends ScreenAdapter {
     }
 
     // ======== Disparo do agente ========
-    /** Dispara projéteis a partir da posição do player, com leve spread quando há multishot. */
     private void fireAgentShot(Vector2 aimDir) {
         Vector2 dir = new Vector2(aimDir).nor();
         int n = Math.max(1, player.stats.projectilesPerShot);
 
-        // até ~25 graus de spread total para n projéteis
         float maxSpreadDeg = Math.min(25f, 6f * (n - 1));
         float maxSpreadRad = maxSpreadDeg * MathUtils.degreesToRadians;
         float step = (n == 1) ? 0f : (maxSpreadRad * 2f) / (n - 1);
