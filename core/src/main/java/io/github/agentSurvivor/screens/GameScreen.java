@@ -24,8 +24,15 @@ import io.github.agentSurvivor.ui.HudRenderer;
 import io.github.agentSurvivor.world.WorldState;
 import io.github.agentSurvivor.systems.PlayerSystem;
 
+// >>> PONTE COM O SMA (JADE)
+import io.github.agentSurvivor.sma.agents.SmaGateway;
+
 public class GameScreen extends ScreenAdapter {
     private final GameMain game;
+
+    private boolean inFinalBossSequence = false;
+
+    private boolean finalPrereqsMet = false;
 
     // chão
     private Texture floorTex;
@@ -108,7 +115,7 @@ public class GameScreen extends ScreenAdapter {
 
     private boolean choosingUpgrade = false;
     private UpgradeOption[] currentChoices = new UpgradeOption[3];
-    private int nextUpgradeAt = 7;
+    private int nextUpgradeAt = 5;
 
     // ====== Pausa / Menus ======
     private boolean paused = false;
@@ -127,14 +134,17 @@ public class GameScreen extends ScreenAdapter {
     private float diffDamageMul = 1f;     // dano
     private float diffHpMul     = 1f;     // HP
 
+    // multiplicador vindo do SMA (ex.: SET_SPAWN_RATE)
+    private float smaSpawnMul   = 1f;
+
     // --- progressão por abates ---
-    private int killedTotal = 104;
-    private int bossKilledTotal = 7;
+    private int killedTotal = 0;
+    private int bossKilledTotal = 0;
     private int currentKillTier = 0;
 
     // Controle do boss especial
     private boolean superBossSpawned = false;
-    private boolean bloqueiaSpawns = false; // NOVO: bloqueia spawns normais
+    private boolean bloqueiaSpawns = false; // bloqueia spawns normais
     private static final String SUPER_BOSS_PATH = "sprite_mob/finalBoss.png";
     private float bossFinalSpawnTimer = -1f; // < 0 = não iniciou
 
@@ -145,6 +155,7 @@ public class GameScreen extends ScreenAdapter {
     public GameScreen(GameMain game) { this.game = game; }
 
     @Override public void show() {
+        io.github.agentSurvivor.sma.agents.SmaStarter.startIfNeeded();
         shapes = new ShapeRenderer();
         batch  = new SpriteBatch();
         font   = new BitmapFont();
@@ -246,6 +257,7 @@ public class GameScreen extends ScreenAdapter {
         float x = (sw - barW) * 0.5f;
         float y = sh - 42f; // margem do topo
 
+        // Enemy precisa ter 'maxHp' público para esta barra (como no ajuste anterior)
         float pct = boss.maxHp > 0 ? Math.max(0f, Math.min(1f, boss.hp / (float) boss.maxHp)) : 0f;
 
         // fundo + preenchimento
@@ -399,7 +411,7 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void stepMusicFallback(float dt) {
-        if (usingBridgeChain) return; // <- não mexe enquanto toca bridge/lastCastle
+        if (usingBridgeChain || inFinalBossSequence) return; // NÃO religar playlist nesse período
         if (!musicEnabled || playlist == null || playlist.length == 0) return;
         musicCheckTimer += dt;
         if (musicCheckTimer < 0.25f) return;
@@ -441,13 +453,15 @@ public class GameScreen extends ScreenAdapter {
     }
 
     private void resetGame() {
+        finalPrereqsMet = false;
+        inFinalBossSequence = false;
         enemies.clear();
         bullets.clear();
         gems.clear();
         world.reset();
         spawner.reset();
         choosingUpgrade = false;
-        nextUpgradeAt = 7;
+        nextUpgradeAt = 5;
 
         killedTotal = 0;
         bossKilledTotal = 0;
@@ -455,7 +469,7 @@ public class GameScreen extends ScreenAdapter {
         GameLogic.setKillTier(0);
 
         superBossSpawned = false;
-        bloqueiaSpawns = false; // NOVO: libera spawns ao resetar
+        bloqueiaSpawns = false; // libera spawns ao resetar
 
         float cx = Gdx.graphics.getWidth()  / 2f;
         float cy = Gdx.graphics.getHeight() / 2f;
@@ -469,6 +483,9 @@ public class GameScreen extends ScreenAdapter {
         stopBridgeChain();
         currentTrack = 0;
         playCurrent();
+
+        // >>> Evento para o SMA
+        emit("{\"type\":\"GAME_RESET\"}");
     }
 
     // ===== Dificuldade =====
@@ -565,32 +582,47 @@ public class GameScreen extends ScreenAdapter {
                     (origin, velocity) -> {
                         bullets.add(new Bullet(new Vector2(origin), new Vector2(velocity)));
                         playShootSfx();
+                        // >>> Evento para o SMA
+                        emit("{\"type\":\"PLAYER_SHOT\"}");
                     }
                 );
 
                 updateBullets(delta);
                 updateEnemies(delta);
 
+                // ---- antes de possíveis spawns
+                int enemiesBeforeSpawns = enemies.size;
                 int bossesBeforeSpawn = countBoss(enemies);
 
                 // trava spawns quando bater os limites
-                if (!bloqueiaSpawns && killedTotal >= 105 && bossKilledTotal >= 7) {
+                if (!bloqueiaSpawns && killedTotal >= 105) {
                     bloqueiaSpawns = true;
+                    finalPrereqsMet = true; // libera etapa final (seu fluxo de boss final usa essa flag)
+                    spawner.reset();
                 }
+
+                // Apenas UMA chamada ao spawner (já com multiplicador do SMA)
                 if (!bloqueiaSpawns) {
+                    float spawnMul = diffSpawnMul * smaSpawnMul;
                     spawner.update(
-                        delta * diffSpawnMul, world,
+                        delta * spawnMul, world,
                         Gdx.graphics.getWidth(), Gdx.graphics.getHeight(),
                         enemies, world.elapsed, diffHpMul
                     );
                 }
 
+                // novos spawns que aconteceram neste frame
+                int spawnedNow = Math.max(0, enemies.size - enemiesBeforeSpawns);
+                for (int i = 0; i < spawnedNow; i++) emit("{\"type\":\"MONSTER_SPAWNED\"}");
+
                 int bossesAfterSpawn = countBoss(enemies);
                 if (bossesAfterSpawn > bossesBeforeSpawn) {
                     playBossSpawnSfx();
+                    for (int i = 0; i < (bossesAfterSpawn - bossesBeforeSpawn); i++)
+                        emit("{\"type\":\"BOSS_SPAWNED\"}");
                 }
 
-                int enemiesBefore = enemies.size;
+                int enemiesBefore = enemies.size; // para mortes após colisões
                 int bossCountBeforeCollisions = countBoss(enemies);
                 int hpBefore = player.hp;
 
@@ -601,14 +633,6 @@ public class GameScreen extends ScreenAdapter {
                 if (player.hp < hpBefore || playerTookTouch) playHurtSfx();
 
                 int bossCountAfterCollisions = countBoss(enemies);
-
-                if (finalBossMusicPlaying && findAliveBoss() == null) {
-                    stopFinalBossMusic();
-                    if (!usingBridgeChain) {
-                        playCurrent(); // retoma playlist normal
-                    }
-                }
-
                 if (bossCountAfterCollisions < bossCountBeforeCollisions) {
                     bossKilledTotal += (bossCountBeforeCollisions - bossCountAfterCollisions);
                 }
@@ -617,6 +641,10 @@ public class GameScreen extends ScreenAdapter {
                 int removedThisFrame = Math.max(0, enemiesBefore - enemies.size);
                 if (removedThisFrame > 0) {
                     killedTotal += removedThisFrame;
+                    for (int i = 0; i < removedThisFrame; i++) {
+                        emit("{\"type\":\"MONSTER_DIED\"}");
+                        emit("{\"type\":\"PLAYER_KILL\"}");
+                    }
                     int newTier = killedTotal / 20;
                     if (newTier > currentKillTier) {
                         currentKillTier = newTier;
@@ -631,20 +659,30 @@ public class GameScreen extends ScreenAdapter {
                     && enemies.size == 0) {
 
                     if (bossFinalSpawnTimer < 0f) { // inicia só a espera
+                        // Silencia tudo e impede o fallback de religar
                         if (playlist != null) {
                             for (Music m : playlist) if (m.isPlaying()) m.stop();
                         }
-                        bossFinalSpawnTimer = 5f;  // aguarda antes de spawnar
+                        stopBridgeChain();          // garante que a sequência bridge/lastCastle não esteja tocando
+                        inFinalBossSequence = true; // trava o fallback
+
+                        bossFinalSpawnTimer = 5f;   // aguarda antes de spawnar
                         bloqueiaSpawns = true;
                     }
                 }
 
-// 2) Quando o timer chega a zero, spawna o SuperBoss com sprite específica
+                // Quando o timer chega a zero, spawna o SuperBoss
                 if (!superBossSpawned && bossFinalSpawnTimer >= 0f) {
                     bossFinalSpawnTimer -= delta;
                     if (bossFinalSpawnTimer <= 0f) {
-                        // toca a música do boss **na hora do spawn**
+                        // música do boss pode ser comandada pelo MusicAgent; aqui ligamos só se ainda não estiver
                         if (finalBossMusic != null && !finalBossMusicPlaying) {
+                            // Segurança: pare qualquer música que porventura tenha voltado
+                            if (playlist != null) {
+                                for (Music m : playlist) if (m.isPlaying()) m.stop();
+                            }
+                            stopBridgeChain();
+
                             finalBossMusic.play();
                             finalBossMusicPlaying = true;
                         }
@@ -654,6 +692,9 @@ public class GameScreen extends ScreenAdapter {
                         );
                         enemies.add(superBoss);
                         superBossSpawned = true;
+
+                        emit("{\"type\":\"MONSTER_SPAWNED\"}");
+                        emit("{\"type\":\"BOSS_SPAWNED\"}");
                     }
                 }
 
@@ -664,7 +705,10 @@ public class GameScreen extends ScreenAdapter {
                 // coleta gem/score e upgrades por pontos
                 float pickR = player.r + (gemRegion != null ? gemRegion.getRegionWidth() * gemScale * 0.35f : 6f);
                 int gained = GameLogic.pickGems(gems, player, pickR, 1);
-                world.score += gained;
+                if (gained > 0) {
+                    world.score += gained;
+                    emit("{\"type\":\"PLAYER_SCORED\",\"score\":" + world.score + "}");
+                }
 
                 if (world.score >= nextUpgradeAt && !choosingUpgrade) {
                     openUpgradeMenu();
@@ -672,21 +716,25 @@ public class GameScreen extends ScreenAdapter {
 
                 // morreu de vez
                 if (player.hp <= 0 && !player.tryRevive(Gdx.graphics.getWidth(), Gdx.graphics.getHeight())) {
-
                     world.gameOver = true;
                     paused = false;
                     choosingUpgrade = false;
-                    // música pós-morte: bridge -> lastCastle
-                    if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
-                        startBridgeChain();
-                    }
 
+                    // evento + comportamento padrão (cadeia bridge → lastCastle)
+                    emit("{\"type\":\"PLAYER_DIED\"}");
+
+                    // padrão local (caso não haja MusicAgent rodando)
+                    stopFinalBossMusic();
+                    startBridgeChain();
                 }
 
             } else if (choosingUpgrade && !paused) {
                 handleUpgradeChoiceInput();
             }
         }
+
+        // comandos vindos do SMA (podem chegar a qualquer momento)
+        consumeSmaCommands();
 
         // input de navegação do pause
         if (paused) handlePauseInput();
@@ -717,15 +765,87 @@ public class GameScreen extends ScreenAdapter {
 
         batch.end();
 
-        // overlays (cada um abre/fecha seu begin/end)
+        // overlays
         if (choosingUpgrade) drawUpgradeOverlay();
         if (paused)         drawPauseOverlay();
+
         Enemy bossForBar = findAliveBoss();
-        if (bossForBar != null) {
-            drawBossHealthBar(bossForBar);
+        if (bossForBar != null) drawBossHealthBar(bossForBar);
+    }
+
+    // ======= CONSUMO DE COMANDOS DO SMA =======
+    private void consumeSmaCommands() {
+        String cmd;
+        while ((cmd = SmaGateway.pollCommandForGame()) != null) {
+
+            if (cmd.contains("\"cmd\":\"REQUEST_SPAWN\"")) {
+                if (bloqueiaSpawns) {
+                    // ignorar pedidos de spawn quando travado (após 105 kills ou pós-boss final)
+                    continue;
+                }
+                int count = parseInt(cmd, "count", 1);
+                for (int i = 0; i < count; i++) {
+                    float x = MathUtils.random(30f, Gdx.graphics.getWidth() - 30f);
+                    float y = MathUtils.random(30f, Gdx.graphics.getHeight() - 30f);
+                    enemies.add(new Enemy(new Vector2(x, y)));
+                    emit("{\"type\":\"MONSTER_SPAWNED\"}");
+                }
+            } else if (cmd.contains("\"cmd\":\"SET_SPAWN_RATE\"")) {
+                float rate = parseFloat(cmd, "rate", 1f);
+                smaSpawnMul = Math.max(0.2f, Math.min(rate, 3f));
+
+            } else if (cmd.contains("\"cmd\":\"MUSIC\"")) {
+                if (cmd.contains("\"action\":\"play\"") && cmd.contains("\"finalBoss\"")) {
+                    if (finalBossMusic != null && !finalBossMusicPlaying) {
+                        stopBridgeChain();
+                        finalBossMusic.play();
+                        finalBossMusicPlaying = true;
+                    }
+                } else if (cmd.contains("\"action\":\"sequence\"")) {
+                    startBridgeChain();
+                } else if (cmd.contains("\"action\":\"resume-playlist\"")) {
+                    stopBridgeChain();
+                    if (!finalBossMusicPlaying) playCurrent();
+                } else if (cmd.contains("\"action\":\"stop\"")) {
+                    stopBridgeChain();
+                    stopFinalBossMusic();
+                }
+            }
         }
     }
 
+    // ===== Utilidades simples de parsing e emissão =====
+    private static int parseInt(String json, String key, int defVal) {
+        try {
+            int ki = json.indexOf('\"' + key + '\"');
+            if (ki < 0) return defVal;
+            int ci = json.indexOf(':', ki);
+            if (ci < 0) return defVal;
+            int j = ci + 1;
+            while (j < json.length() && Character.isWhitespace(json.charAt(j))) j++;
+            int k = j;
+            while (k < json.length() && (Character.isDigit(json.charAt(k)) || json.charAt(k) == '-')) k++;
+            return Integer.parseInt(json.substring(j, k));
+        } catch (Exception e) { return defVal; }
+    }
+
+    private static float parseFloat(String json, String key, float defVal) {
+        try {
+            int ki = json.indexOf('\"' + key + '\"');
+            if (ki < 0) return defVal;
+            int ci = json.indexOf(':', ki);
+            if (ci < 0) return defVal;
+            int j = ci + 1;
+            while (j < json.length() && Character.isWhitespace(json.charAt(j))) j++;
+            int k = j;
+            while (k < json.length() && "0123456789+-.eE".indexOf(json.charAt(k)) >= 0) k++;
+            return Float.parseFloat(json.substring(j, k));
+        } catch (Exception e) { return defVal; }
+    }
+
+    private static void emit(String json) {
+        SmaGateway.emitEventFromGame(json);
+    }
 
     private void drawFloorTiled(SpriteBatch batch) {
         if (floorRegion == null) return;
@@ -814,7 +934,7 @@ public class GameScreen extends ScreenAdapter {
                 break;
         }
         choosingUpgrade = false;
-        nextUpgradeAt += 7;
+        nextUpgradeAt += 5;
     }
 
     private UpgradeOption[] rollThreeWeightedDistinct() {
@@ -836,6 +956,17 @@ public class GameScreen extends ScreenAdapter {
             pool.removeValue(chosen, true);
         }
         return out;
+    }
+
+    @Override public void hide() {
+        // Para QUALQUER música do jogo quando sair desta tela
+        stopBridgeChain();        // pára bridge/lastCastle se estiverem tocando
+        stopFinalBossMusic();     // pára a trilha do boss final
+        if (playlist != null) {
+            for (Music m : playlist) {
+                if (m.isPlaying()) m.stop();
+            }
+        }
     }
 
     private void drawUpgradeOverlay() {
