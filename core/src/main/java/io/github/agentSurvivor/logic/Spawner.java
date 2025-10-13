@@ -19,10 +19,6 @@ public class Spawner {
         spawnedCount = 0;
     }
 
-    /**
-     * Spawna inimigos e retorna true no frame em que UM boss nasce.
-     * Assinatura bate com seu GameScreen atual.
-     */
     public boolean update(float dt,
                           WorldState world,
                           float screenW, float screenH,

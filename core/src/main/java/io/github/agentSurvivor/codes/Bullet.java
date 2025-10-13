@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 
 public class Bullet {
+
     // ====== Config do sprite/anim ======
     private static final String  SHEET_PATH   = "sprite_player/hit.png"; // seu sprite
     private static final int     COLS         = 5;   // 5 quadros na horizontal
@@ -68,11 +69,6 @@ public class Bullet {
         );
     }
 
-    /** Fallback antigo (se ainda houver algum draw com ShapeRenderer). */
-    public void render(ShapeRenderer shapes) {
-        shapes.circle(pos.x, pos.y, r, 12);
-    }
-
     // ====== Recursos ======
     private static void ensureLoaded() {
         if (sAnim != null) return;
@@ -94,7 +90,6 @@ public class Bullet {
         sAnim.setPlayMode(Animation.PlayMode.LOOP);
     }
 
-    /** Chame no GameScreen.dispose(). */
     public static void disposeShared() {
         if (sSheet != null) {
             sSheet.dispose();

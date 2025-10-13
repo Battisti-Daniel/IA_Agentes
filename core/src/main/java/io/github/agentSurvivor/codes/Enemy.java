@@ -10,7 +10,6 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Array;
 
-/** Inimigo com sprite (scorpion) e suporte a BOSS e SUPER BOSS. */
 public class Enemy {
 
     // ===== Sprite base (inimigo comum) =====
@@ -19,7 +18,6 @@ public class Enemy {
     private static final int ROWS = 1;
     private static final float WALK_FRAME_SEC = 0.12f;
 
-    /** Se o sprite original olha para a ESQUERDA, mantenha true. */
     private static final boolean BASE_FACES_LEFT = true;
 
     // ===== Escalas visuais =====
@@ -35,15 +33,15 @@ public class Enemy {
     public float r = 10f;         // raio para colisão
     public float baseSpeed = 60f; // velocidade base (a efetiva vem de fora)
     public int hp = 1;
-    public int maxHp = 1;         // <<< NOVO: vida máxima para barra
+    public int maxHp = 1;         // vida máxima para barra
     public boolean isBoss = false;
 
     private final Vector2 tmp = new Vector2();
 
     // ===== Visual =====
     private Texture sheetTex; // só do inimigo comum
-    private Animation<TextureRegion> walkAnim;     // comum / também usado no super boss
-    private Animation<TextureRegion> bossAnim;     // boss (se frames forem fornecidos)
+    private Animation<TextureRegion> walkAnim;
+    private Animation<TextureRegion> bossAnim;
     private TextureRegion current;
     private float animTime = 0f;
     private boolean facingLeft = false;
@@ -63,7 +61,7 @@ public class Enemy {
         this.r = r;
         this.baseSpeed = baseSpeed;
         this.hp = hp;
-        this.maxHp = hp;             // <<< NOVO
+        this.maxHp = hp;
         this.visualScale = NORMAL_SCALE;
         loadCommonSheet();
         buildBossAnimIfPossible();
@@ -92,20 +90,14 @@ public class Enemy {
         }
     }
 
-    /** Fábrica de boss. */
     public static Enemy makeBoss(Vector2 p) {
         Enemy e = new Enemy(p);
         e.isBoss = true;
         e.visualScale = BOSS_SCALE;
         e.hp = 12;
-        e.maxHp = e.hp;                                // <<< NOVO
+        e.maxHp = e.hp;
         e.r = 20f * (BOSS_SCALE / NORMAL_SCALE);
         return e;
-    }
-
-    /** Fábrica de SUPER BOSS (usa sprite própria). */
-    public static Enemy makeSuperBoss(Vector2 p) {
-        return makeSuperBoss(p, "sprite_mob/finalBoss.png");
     }
 
     public static Enemy makeSuperBoss(Vector2 p, String spritePath) {
@@ -113,11 +105,10 @@ public class Enemy {
         e.isBoss = true;
         e.visualScale = BOSS_SCALE * 1.4f;
         e.hp = 120;
-        e.maxHp = e.hp;                                // <<< NOVO
+        e.maxHp = e.hp;
         e.r = 30f * (BOSS_SCALE / NORMAL_SCALE);
         e.baseSpeed = 80f;
 
-        // Troca o sprite para o arquivo específico
         if (e.sheetTex != null) e.sheetTex.dispose();
         e.sheetTex = new Texture(Gdx.files.internal(spritePath));
         int fw = e.sheetTex.getWidth() / COLS;
@@ -128,11 +119,10 @@ public class Enemy {
         e.walkAnim = new Animation<>(WALK_FRAME_SEC, frames, Animation.PlayMode.LOOP);
         e.current = frames.first();
 
-        e.bossAnim = null; // <<< ESSENCIAL: força usar a animação do sprite do SUPER BOSS
+        e.bossAnim = null;
         return e;
     }
 
-    /** Move na direção do alvo (ex.: player) e ajusta a orientação. */
     public void updateTowards(float dt, Vector2 target, float speed) {
         if (dying) return;
 
@@ -143,17 +133,6 @@ public class Enemy {
         if (tmp.len2() > 1e-4f) pos.mulAdd(tmp.nor(), speed * dt);
     }
 
-    /** Inicia a “morte” (fade/encolher). */
-    public void startDying() {
-        if (dying) return;
-        dying = true;
-        dieTime = 0f;
-    }
-
-    public boolean isDying() { return dying; }
-    public boolean isDyingFinished() { return diedAndFinished; }
-
-    /** Desenho com SpriteBatch. */
     public void render(SpriteBatch batch, float dt) {
         animTime += dt;
 
@@ -193,12 +172,6 @@ public class Enemy {
         } else {
             batch.draw(current, drawX, drawY, fw, fh);
         }
-    }
-
-    /** Fallback antigo (círculo), caso alguém ainda chame via ShapeRenderer. */
-    public void render(ShapeRenderer shapes) {
-        shapes.setColor(0.85f, 0.2f, 0.25f, 1f);
-        shapes.circle(pos.x, pos.y, r, 20);
     }
 
     public void dispose() {

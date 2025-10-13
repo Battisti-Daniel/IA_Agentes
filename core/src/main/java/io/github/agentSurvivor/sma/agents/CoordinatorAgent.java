@@ -5,10 +5,9 @@ import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
 
-/** Equiv. ao "Bombeiro": recebe tudo, imprime e repassa p/ os demais agentes. */
 public class CoordinatorAgent extends Agent {
 
-    public static final String NAME = "coordinator";
+    public static final String NAME = "Coordenador dos eventos";
 
     // >>> Constantes usadas por outros agentes (faltavam e causavam o erro)
     public static final String ONT_EVENT = "ONT_EVENT";
@@ -29,7 +28,13 @@ public class CoordinatorAgent extends Agent {
                     System.out.println("[agent] decisão " + content);
                 } else if (content.startsWith("{\"type\":\"WORLD_SNAPSHOT\"")) {
                     System.out.println("[world] " + content);
-                } else {
+                }else if (content.contains("\"type\":\"MONSTER_SPAWNED\"")) {
+                    System.out.println("[Coordenador] evento: NASCIMENTO de monstro");
+                }
+                else if (content.contains("\"type\":\"MONSTER_DIED\"")) {
+                    System.out.println("[Coordenador] evento: MORTE de monstro");
+                }
+                else {
                     System.out.println("[" + getLocalName() + "] recebeu: " + content +
                         " (de " + msg.getSender().getLocalName() + ")");
                 }
@@ -65,7 +70,6 @@ public class CoordinatorAgent extends Agent {
         send(out);
     }
 
-    /** Aceita o JSON que o GameScreen emite e transforma em tokens simples. */
     private String normalize(String c) {
         if (!c.startsWith("{")) return c; // já é token simples
         if (c.contains("\"type\":\"MONSTER_SPAWNED\"")) return "ENEMY_SPAWNED";
@@ -77,6 +81,8 @@ public class CoordinatorAgent extends Agent {
         if (c.contains("\"type\":\"GAME_RESET\""))     return "GAME_RESET";
         if (c.contains("\"type\":\"AGENT_DECISION\"")) return "AGENT_DECISION";
         if (c.contains("\"type\":\"WORLD_SNAPSHOT\"")) return "WORLD_SNAPSHOT";
+        if (c.contains("\"type\":\"MUSIC_STARTED\"")) return "MUSIC_STARTED";
+        if (c.contains("\"type\":\"MUSIC_STOPPED\"")) return "MUSIC_STOPPED";
         return c;
     }
 }

@@ -12,10 +12,7 @@ public class WorldState {
         gameOver = false;
     }
 
-    public void tick(float dt) { elapsed += dt; }
-
-    /** Mesmo pacing que você já usava. */
-    public float nextSpawnCooldown() {
-        return Math.max(0.25f, 1.2f - elapsed * 0.05f);
+    public void tick(float dt) {
+        elapsed += dt;
     }
 }

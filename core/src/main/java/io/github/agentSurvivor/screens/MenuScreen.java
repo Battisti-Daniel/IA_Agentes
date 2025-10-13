@@ -15,7 +15,7 @@ import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.badlogic.gdx.utils.Align;
 import io.github.agentSurvivor.GameMain;
 import io.github.agentSurvivor.bridge.GameBridge;
-import io.github.agentSurvivor.codes.GifDecoder; // você já incluiu essa classe no projeto
+import io.github.agentSurvivor.codes.GifDecoder;
 import com.badlogic.gdx.audio.Music;
 
 public class MenuScreen extends ScreenAdapter {

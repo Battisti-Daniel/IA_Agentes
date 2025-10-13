@@ -10,39 +10,34 @@ public final class GameLogic {
     // ====== PROGRESSÃO POR ABATE (tier global) ======
     private static int sKillTier = 0;
     public static void setKillTier(int tier) { sKillTier = Math.max(0, tier); }
-    public static int  getKillTier() { return sKillTier; }
 
     // ====== VELOCIDADE (com e sem multiplicador — para compatibilidade) ======
     /** Versão usada pelo código novo (com multiplicador de dificuldade). */
     public static float enemySpeed(float elapsed, float diffSpeedMul) {
-        float base = 50f + Math.min(80f, elapsed * 2.0f);  // sua curva suave
-        float tierMul = 1f + 0.08f * sKillTier;            // +8% por tier (20 kills)
+        float base = 50f + Math.min(80f, elapsed * 2.0f);
+        float tierMul = 1f + 0.08f * sKillTier;
         return base * tierMul * Math.max(0.1f, diffSpeedMul);
     }
 
-    /** Overload para código antigo (EnemySystem chama só com elapsed). */
     public static float enemySpeed(float elapsed) {
         return enemySpeed(elapsed, 1f);
     }
 
     // ---------------- SPAWNS ----------------
 
-    /** Inimigo comum: nasce fora da tela, HP escala com tier. */
     public static Enemy spawnEnemyAtEdge(float w, float h) {
         Vector2 p = randEdge(w, h);
         int baseHp = 1;
-        int hpScaled = Math.max(1, Math.round(baseHp * (1f + 0.15f * sKillTier))); // +15% HP por tier
+        int hpScaled = Math.max(1, Math.round(baseHp * (1f + 0.15f * sKillTier)));
         return new Enemy(p, 10f, 60f, hpScaled);
     }
 
-    /** Overload compatível com Spawner antigo (ignora elapsed, aplica hpMulFromDiff). */
     public static Enemy spawnEnemyAtEdge(float w, float h, float elapsed, float hpMulFromDiff) {
         Enemy e = spawnEnemyAtEdge(w, h);
         e.hp = Math.max(1, Math.round(e.hp * Math.max(0.1f, hpMulFromDiff)));
         return e;
     }
 
-    /** Boss: nasce fora da tela, HP escala com tier. */
     public static Enemy spawnBossAtEdge(float w, float h) {
         Vector2 p = randEdge(w, h);
         Enemy e = Enemy.makeBoss(p);
@@ -50,7 +45,6 @@ public final class GameLogic {
         return e;
     }
 
-    /** Overload compatível com Spawner antigo (ignora elapsed, aplica hpMulFromDiff). */
     public static Enemy spawnBossAtEdge(float w, float h, float elapsed, float hpMulFromDiff) {
         Enemy e = spawnBossAtEdge(w, h);
         e.hp = Math.max(1, Math.round(e.hp * Math.max(0.1f, hpMulFromDiff)));
@@ -71,12 +65,6 @@ public final class GameLogic {
 
     // ------------- COLISÕES / PONTOS -------------
 
-    /**
-     * Bala vs Inimigo:
-     * - Dano 1 por bala (ajuste se quiser).
-     * - Remove inimigo com HP <= 0 e solta 1 gema.
-     * - Retorna true se ALGUM boss morreu neste frame (para abrir upgrade).
-     */
     public static boolean handleBulletEnemyCollisions(Array<Bullet> bullets, Array<Enemy> enemies, Array<Vector2> gems) {
         boolean bossKilled = false;
 
@@ -95,7 +83,7 @@ public final class GameLogic {
             }
 
             if (hit && e.hp <= 0) {
-                if (e.isBoss) bossKilled = true;      // <- upgrade por morte de boss (bala)
+                if (e.isBoss) bossKilled = true;
                 gems.add(new Vector2(e.pos));
                 enemies.removeIndex(i);
             }
@@ -103,12 +91,6 @@ public final class GameLogic {
         return bossKilled;
     }
 
-    /**
-     * Inimigo vs Player (versão nova, com multiplicadores):
-     * - Dano escala com tier e dificuldade.
-     * - Retorna true se o inimigo que colidiu é boss (se quiser abrir upgrade também por contato).
-     *   → Se NÃO quiser abrir por contato, troque 'bossTouched = true' por 'bossTouched = false'.
-     */
     public static boolean handleEnemyPlayerCollisions(
         Array<Enemy> enemies,
         Player player,
@@ -116,8 +98,8 @@ public final class GameLogic {
         float elapsed,
         float diffDamageMul
     ) {
-        boolean bossTouched = false;                 // deixa false: upgrade só abre em morte por tiro
-        float tierMul = 1f + 0.10f * sKillTier;      // +10% dano por tier
+        boolean bossTouched = false;
+        float tierMul = 1f + 0.10f * sKillTier;
 
         for (int i = enemies.size - 1; i >= 0; i--) {
             Enemy e = enemies.get(i);
@@ -128,32 +110,19 @@ public final class GameLogic {
                 player.knockbackFrom(e.pos, knockbackStrength);
 
                 if (e.isBoss) {
-                    // NÃO remove o boss no contato: ele continua vivo para ser morto por bala
-                    // (opcional) empurra um pouco o boss para longe do player
                     Vector2 away = new Vector2(e.pos).sub(player.pos);
                     if (away.len2() > 0.001f) {
-                        away.nor().scl(20f); // distância pequena
+                        away.nor().scl(20f);
                         e.pos.add(away);
                     }
                 } else {
-                    // inimigos comuns podem ser removidos no contato (se quiser esse comportamento)
                     enemies.removeIndex(i);
                 }
             }
         }
-        return bossTouched; // continua false: upgrade só quando morrer por bala
+        return bossTouched;
     }
 
-    /** Overload antigo (sem multiplicadores) para manter compatibilidade. */
-    public static boolean handleEnemyPlayerCollisions(
-        Array<Enemy> enemies,
-        Player player,
-        float knockbackStrength
-    ) {
-        return handleEnemyPlayerCollisions(enemies, player, knockbackStrength, 0f, 1f);
-    }
-
-    /** Coleta de gema: retorna pontos ganhos. */
     public static int pickGems(Array<Vector2> gems, Player player, float pickRadius, int pointsPerGem) {
         int gained = 0;
         float pickR2 = pickRadius * pickRadius;

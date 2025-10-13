@@ -1,6 +1,5 @@
 package io.github.agentSurvivor.bridge;
 
-/** Stub simples só para compilar e manter o menu/hud como estão. */
 public final class GameBridge {
     private static final GameBridge INSTANCE = new GameBridge();
     private volatile boolean agentMode = false;

@@ -208,6 +208,9 @@ public class GameScreen extends ScreenAdapter {
         if (finalBossMusic != null && finalBossMusicPlaying) {
             finalBossMusic.stop();
             finalBossMusicPlaying = false;
+
+            System.out.println("[JOGO] Música do Boss FINAL: STOP");
+            emit("{\"type\":\"MUSIC_STOPPED\",\"track\":\"finalBoss\"}");
         }
     }
 
@@ -741,6 +744,9 @@ public class GameScreen extends ScreenAdapter {
 
                             finalBossMusic.play();
                             finalBossMusicPlaying = true;
+
+                            System.out.println("[JOGO] Música do Boss FINAL: PLAY");
+                            emit("{\"type\":\"MUSIC_STARTED\",\"track\":\"finalBoss\"}");
                         }
                         Enemy superBoss = Enemy.makeSuperBoss(
                             new Vector2(Gdx.graphics.getWidth() / 2f, Gdx.graphics.getHeight() / 2f),
@@ -865,6 +871,20 @@ public class GameScreen extends ScreenAdapter {
                 } else if (cmd.contains("\"action\":\"stop\"")) {
                     stopBridgeChain();
                     stopFinalBossMusic();
+                }else if (cmd.contains("\"action\":\"play\"") && cmd.contains("\"finalBoss\"")) {
+                    if (finalBossMusic != null && !finalBossMusicPlaying) {
+                        stopBridgeChain();
+                        finalBossMusic.play();
+                        finalBossMusicPlaying = true;
+
+                        System.out.println("[JOGO] Música do Boss FINAL: PLAY (via SMA)");
+                        emit("{\"type\":\"MUSIC_STARTED\",\"track\":\"finalBoss\",\"source\":\"SMA\"}");
+                    }
+                } else if (cmd.contains("\"action\":\"stop\"")) {
+                    stopBridgeChain();
+                    stopFinalBossMusic();
+                }else if (cmd.startsWith("CMD|HUD|flash")) {
+                    Gdx.app.log("HUD", "flash solicitado pelo PlayerAgent");
                 }
             }
         }

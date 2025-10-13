@@ -16,19 +16,12 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.utils.Array;
 
 public class GifDecoder {
-    /**
-     * File read status: No errors.
-     */
+
     public static final int STATUS_OK = 0;
-    /**
-     * File read status: Error decoding file (may be partially decoded)
-     */
+
     public static final int STATUS_FORMAT_ERROR = 1;
-    /**
-     * File read status: Unable to open source.
-     */
+
     public static final int STATUS_OPEN_ERROR = 2;
-    /** max decoder pixel stack size */
     protected static final int MAX_STACK_SIZE = 4096;
     protected InputStream in;
     protected int status;

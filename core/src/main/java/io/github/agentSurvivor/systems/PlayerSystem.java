@@ -37,11 +37,14 @@ public class PlayerSystem {
             // tiro (barra de espaço) em direção ao mouse (1 bala; cooldown controlado no Player)
             if (Gdx.input.isKeyJustPressed(Input.Keys.SPACE) && player.canShoot()) {
                 mouseWorld.set(Gdx.input.getX(), Gdx.input.getY());
-                mouseWorld.y = screenH - mouseWorld.y; // Y da tela -> Y do mundo 2D
+                mouseWorld.y = screenH - mouseWorld.y;
+                player.shootAt(mouseWorld, spawnBullet);
+            }else if (Gdx.input.isButtonJustPressed(Input.Buttons.LEFT) && player.canShoot()) {
+                mouseWorld.set(Gdx.input.getX(), Gdx.input.getY());
+                mouseWorld.y = screenH - mouseWorld.y;
                 player.shootAt(mouseWorld, spawnBullet);
             }
         } else {
-            // (modo agente, por enquanto não movimenta)
             player.move(dir.setZero(), dt, screenW, screenH);
         }
     }
