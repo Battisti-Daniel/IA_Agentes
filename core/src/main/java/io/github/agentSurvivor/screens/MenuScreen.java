@@ -37,8 +37,8 @@ public class MenuScreen extends ScreenAdapter {
     private Sound changeSfx;
 
     // UI helpers
-    private Texture pixel; // 1x1 branco para desenhar retângulos coloridos
-    private int selected = 0; // 0=Humano, 1=Agente
+    private Texture pixel;
+    private int selected = 0;
 
     // cores da UI
     private final Color panelBg     = new Color(0f, 0f, 0f, 0.45f);
@@ -51,14 +51,13 @@ public class MenuScreen extends ScreenAdapter {
     public MenuScreen(GameMain game) { this.game = game; }
 
     private Music lobbyMusic;
-    private static final float LOBBY_GAIN = 0.10f; // bem baixo
-    private int volumePercent = 10;                // opcional: pode ler de um Settings global
+    private static final float LOBBY_GAIN = 0.10f;
+    private int volumePercent = 10;
 
     @Override public void show() {
         batch  = new SpriteBatch();
         layout = new GlyphLayout();
 
-        // --- pixel 1x1 para desenhar "divs" (retângulos) ---
         Pixmap pm = new Pixmap(1,1, Pixmap.Format.RGBA8888);
         pm.setColor(Color.WHITE);
         pm.fill();
@@ -96,7 +95,7 @@ public class MenuScreen extends ScreenAdapter {
         FileHandle f2 = Gdx.files.internal("fonts/font-Bold.ttf");
 
         int sw = Gdx.graphics.getWidth();
-        float uiScale = sw / 960f; // escala leve conforme resolução
+        float uiScale = sw / 960f;
 
         if (f1.exists() || f2.exists()) {
             FileHandle chosen = f1.exists() ? f1 : f2;
@@ -122,7 +121,6 @@ public class MenuScreen extends ScreenAdapter {
 
             gen.dispose();
         } else {
-            // fallback: fonte padrão
             titleFont = new BitmapFont(); titleFont.getData().setScale(1.8f);
             optionFont = new BitmapFont(); optionFont.getData().setScale(1.2f);
             hintFont   = new BitmapFont(); hintFont.getData().setScale(0.9f);
@@ -148,7 +146,7 @@ public class MenuScreen extends ScreenAdapter {
         float h  = 44f;
 
         float x  = (sw - w) * 0.5f;
-        float y  = centerY - h * 0.5f; // retângulo centrado no eixo Y
+        float y  = centerY - h * 0.5f;
 
         // fundo da opção
         drawRect(x, y, w, h, selected ? highlightBg : optionBg);
@@ -231,7 +229,6 @@ public class MenuScreen extends ScreenAdapter {
         f.setColor(color);
         layout.setText(f, text);
         float textX = x + (w - layout.width) * 0.5f;
-        // y do BitmapFont é a "baseline": para centralizar verticalmente, soma metade da altura do layout
         float textY = y + (h + layout.height) * 0.5f;
         f.draw(batch, layout, textX, textY);
     }
@@ -242,7 +239,7 @@ public class MenuScreen extends ScreenAdapter {
         layout.setText(f, text);
         float sw = Gdx.graphics.getWidth();
         float textX = (sw - layout.width) * 0.5f;
-        float textY = centerY + layout.height * 0.5f; // baseline centralizada
+        float textY = centerY + layout.height * 0.5f;
         f.draw(batch, layout, textX, textY);
     }
 

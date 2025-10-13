@@ -11,12 +11,12 @@ import com.badlogic.gdx.math.Vector2;
 public class Bullet {
 
     // ====== Config do sprite/anim ======
-    private static final String  SHEET_PATH   = "sprite_player/hit.png"; // seu sprite
-    private static final int     COLS         = 5;   // 5 quadros na horizontal
+    private static final String  SHEET_PATH   = "sprite_player/hit.png";
+    private static final int     COLS         = 5;
     private static final int     ROWS         = 1;
-    private static final float   FRAME_SEC    = 0.07f; // velocidade da animação
-    private static final float   DRAW_SCALE   = 1.5f;  // tamanho na tela
-    private static final float   BASE_ANGLE   = 0f;    // 0° se o sprite aponta p/ direita (ajuste se necessário)
+    private static final float   FRAME_SEC    = 0.07f;
+    private static final float   DRAW_SCALE   = 1.5f;
+    private static final float   BASE_ANGLE   = 0f;
 
     // Compartilhados entre todas as balas
     private static Texture                     sSheet;
@@ -25,8 +25,8 @@ public class Bullet {
     // ====== Estado ======
     public final Vector2 pos = new Vector2();
     public final Vector2 vel = new Vector2();
-    public float r = 4f;             // raio para colisão simples
-    private float life = 3.0f;       // duração
+    public float r = 4f;
+    private float life = 3.0f;
     private float animTime = 0f;
     private float rotationDeg = 0f;
 
@@ -58,11 +58,10 @@ public class Bullet {
         float w = frame.getRegionWidth()  * DRAW_SCALE;
         float h = frame.getRegionHeight() * DRAW_SCALE;
 
-        // desenha rotacionando ao redor do centro
         batch.draw(
             frame,
             pos.x - w * 0.5f, pos.y - h * 0.5f,
-            w * 0.5f, h * 0.5f,     // origem
+            w * 0.5f, h * 0.5f,
             w, h,
             1f, 1f,
             rotationDeg

@@ -30,16 +30,16 @@ public class Enemy {
 
     // ===== Gameplay =====
     public final Vector2 pos = new Vector2();
-    public float r = 10f;         // raio para colisão
-    public float baseSpeed = 60f; // velocidade base (a efetiva vem de fora)
+    public float r = 10f;
+    public float baseSpeed = 60f;
     public int hp = 1;
-    public int maxHp = 1;         // vida máxima para barra
+    public int maxHp = 1;
     public boolean isBoss = false;
 
     private final Vector2 tmp = new Vector2();
 
     // ===== Visual =====
-    private Texture sheetTex; // só do inimigo comum
+    private Texture sheetTex;
     private Animation<TextureRegion> walkAnim;
     private Animation<TextureRegion> bossAnim;
     private TextureRegion current;

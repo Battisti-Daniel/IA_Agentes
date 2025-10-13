@@ -10,7 +10,7 @@ import io.github.agentSurvivor.world.WorldState;
 public class Spawner {
 
     private float timer = 0f;
-    private float interval = 1.2f; // começa mais lento, acelera levemente
+    private float interval = 1.2f;
     private int spawnedCount = 0;
 
     public void reset() {
@@ -28,7 +28,6 @@ public class Spawner {
 
         boolean bossSpawnedThisFrame = false;
 
-        // acelera de leve com o tempo (não muito agressivo)
         float targetInterval = Math.max(0.35f, 1.2f - (elapsed / 60f) * 0.15f);
         interval = MathUtils.lerp(interval, targetInterval, 0.05f);
 
@@ -37,7 +36,6 @@ public class Spawner {
             timer -= interval;
             spawnedCount++;
 
-            // a cada 20 spawns -> boss
             if (spawnedCount % 20 == 0) {
                 enemies.add(GameLogic.spawnBossAtEdge(screenW, screenH, elapsed, hpMulFromDiff));
                 bossSpawnedThisFrame = true;

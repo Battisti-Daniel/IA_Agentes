@@ -12,7 +12,6 @@ public final class GameLogic {
     public static void setKillTier(int tier) { sKillTier = Math.max(0, tier); }
 
     // ====== VELOCIDADE (com e sem multiplicador — para compatibilidade) ======
-    /** Versão usada pelo código novo (com multiplicador de dificuldade). */
     public static float enemySpeed(float elapsed, float diffSpeedMul) {
         float base = 50f + Math.min(80f, elapsed * 2.0f);
         float tierMul = 1f + 0.08f * sKillTier;
@@ -41,7 +40,7 @@ public final class GameLogic {
     public static Enemy spawnBossAtEdge(float w, float h) {
         Vector2 p = randEdge(w, h);
         Enemy e = Enemy.makeBoss(p);
-        e.hp = Math.max(e.hp, Math.round(e.hp * (1f + 0.20f * sKillTier))); // +20% HP por tier
+        e.hp = Math.max(e.hp, Math.round(e.hp * (1f + 0.20f * sKillTier)));
         return e;
     }
 
@@ -52,7 +51,7 @@ public final class GameLogic {
     }
 
     private static Vector2 randEdge(float w, float h) {
-        int edge = MathUtils.random(3); // 0 top,1 right,2 bottom,3 left
+        int edge = MathUtils.random(3);
         float x=0,y=0;
         switch (edge) {
             case 0: x = MathUtils.random(w); y = h + 20; break;
@@ -78,7 +77,7 @@ public final class GameLogic {
                     bullets.removeIndex(j);
                     e.hp = Math.max(0, e.hp - 1);
                     hit = true;
-                    break; // 1 bala já basta por frame
+                    break;
                 }
             }
 

@@ -10,15 +10,14 @@ public class PlayerStats {
     public float moveSpeed = 180f;
 
     // tiro
-    public float fireCooldown = 2.0f;     // cooldown do disparo (segundos)
-    public float bulletSpeed  = 420f;      // velocidade da bala
-    public int   projectilesPerShot = 1;   // quantas balas por disparo (1 = tiro simples)
+    public float fireCooldown = 2.0f;
+    public float bulletSpeed  = 420f;
+    public int   projectilesPerShot = 1;
 
     public static PlayerStats defaultStats() {
         return new PlayerStats();
     }
 
-    // Helpers opcionais para upgrades
     public PlayerStats withMoveSpeed(float v)         { this.moveSpeed = v; return this; }
     public PlayerStats withFireCooldown(float v)      { this.fireCooldown = v; return this; }
     public PlayerStats withBulletSpeed(float v)       { this.bulletSpeed = v; return this; }

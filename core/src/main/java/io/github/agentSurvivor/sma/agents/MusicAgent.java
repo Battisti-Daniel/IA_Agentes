@@ -27,7 +27,7 @@ public class MusicAgent extends Agent {
                     System.out.println("[music] comecou a tocar: finalBoss");
                 }
                 else if ("MUSIC_STOPPED".equals(ev) || ev.contains("\"type\":\"MUSIC_STOPPED\"")) {
-                    System.out.println("[music] música parada: finalBoss");
+                    System.out.println("[music] musica parada: finalBoss");
                 }
 
             }
