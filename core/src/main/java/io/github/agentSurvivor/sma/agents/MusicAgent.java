@@ -15,27 +15,41 @@ public class MusicAgent extends Agent {
                 ACLMessage msg = myAgent.receive();
                 if (msg == null) { block(); return; }
                 String ev = msg.getContent();
+                if (ev == null) return;
 
-                if ("GAME_RESET".equals(ev)) {
+                System.out.println("[music] recebeu: " + ev);
+
+                boolean isJson = ev.startsWith("{");
+
+                if ((isJson && ev.contains("\"type\":\"GAME_RESET\"")) || "GAME_RESET".equals(ev)) {
                     sendToGame("MUSIC|stop");
-                } else if ("BOSS_SPAWNED".equals(ev)) {
-                    sendToGame("MUSIC|play|finalBoss");
-                } else if ("PLAYER_DIED".equals(ev)) {
-                    sendToGame("MUSIC|sequence");
-                }
-                else if ("MUSIC_STARTED".equals(ev) || ev.contains("\"type\":\"MUSIC_STARTED\"")) {
-                    System.out.println("[music] comecou a tocar: finalBoss");
-                }
-                else if ("MUSIC_STOPPED".equals(ev) || ev.contains("\"type\":\"MUSIC_STOPPED\"")) {
-                    System.out.println("[music] musica parada: finalBoss");
+                    return;
                 }
 
+                if ((isJson && ev.contains("\"type\":\"BOSS_SPAWNED\"")) || "BOSS_SPAWNED".equals(ev)) {
+                    sendToGame("MUSIC|play|finalBoss");
+                    return;
+                }
+
+                if ((isJson && ev.contains("\"type\":\"PLAYER_DIED\"")) || "PLAYER_DIED".equals(ev)) {
+                    sendToGame("MUSIC|sequence");
+                    return;
+                }
+
+                if (isJson && ev.contains("\"type\":\"MUSIC_STARTED\"")) {
+                    System.out.println("[music] começou a tocar (confirmação do jogo): " + ev);
+                    return;
+                }
+                if (isJson && ev.contains("\"type\":\"MUSIC_STOPPED\"")) {
+                    System.out.println("[music] música parada (confirmação do jogo): " + ev);
+                }
             }
         });
     }
 
     private void sendToGame(String cmd) {
         ACLMessage out = new ACLMessage(ACLMessage.INFORM);
+        out.setOntology(CoordinatorAgent.ONT_CMD); // ajuda o coordinator a diferenciar
         out.setContent(cmd);
         out.addReceiver(new AID(GameBridgeAgent.NAME, AID.ISLOCALNAME));
         send(out);

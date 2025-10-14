@@ -840,7 +840,6 @@ public class GameScreen extends ScreenAdapter {
 
             if (cmd.contains("\"cmd\":\"REQUEST_SPAWN\"")) {
                 if (bloqueiaSpawns) {
-                    // ignorar pedidos de spawn quando travado (após 105 kills ou pós-boss final)
                     continue;
                 }
                 int count = parseInt(cmd, "count", 1);

@@ -20,7 +20,7 @@ public class PlayerAgent extends Agent {
 
                 if (ev != null && ev.contains("\"type\":\"PLAYER_SCORED\"")) {
                     ACLMessage cmd = new ACLMessage(ACLMessage.INFORM);
-                    //cmd.setContent("CMD|HUD|flash");
+                    cmd.setContent("Got a coin");
                     cmd.addReceiver(new AID(GameBridgeAgent.NAME, AID.ISLOCALNAME));
                     send(cmd);
                 }
