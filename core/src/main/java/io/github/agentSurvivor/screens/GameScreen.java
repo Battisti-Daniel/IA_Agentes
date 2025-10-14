@@ -837,7 +837,6 @@ public class GameScreen extends ScreenAdapter {
     private void consumeSmaCommands() {
         String cmd;
         while ((cmd = SmaGateway.pollCommandForGame()) != null) {
-
             if (cmd.contains("\"cmd\":\"REQUEST_SPAWN\"")) {
                 if (bloqueiaSpawns) {
                     continue;
@@ -849,7 +848,7 @@ public class GameScreen extends ScreenAdapter {
                     enemies.add(new Enemy(new Vector2(x, y)));
                     emit("{\"type\":\"MONSTER_SPAWNED\"}");
                 }
-            } else if (cmd.contains("\"cmd\":\"SET_SPAWN_RATE\"")) {
+            }else if (cmd.contains("\"cmd\":\"SET_SPAWN_RATE\"")) {
                 float rate = parseFloat(cmd, "rate", 1f);
                 smaSpawnMul = Math.max(0.2f, Math.min(rate, 3f));
 
@@ -979,6 +978,7 @@ public class GameScreen extends ScreenAdapter {
 
     // ====== LEVEL-UP ======
     private void openUpgradeMenu() {
+        emit("{\"type\":\"PLAYER_UPGRADE\",\"score\":" + world.score + "}");
         choosingUpgrade = true;
         currentChoices = rollThreeWeightedDistinct();
     }
@@ -1116,7 +1116,7 @@ public class GameScreen extends ScreenAdapter {
             }
             font.setColor(Color.GRAY);
             font.getData().setScale(0.95f);
-            font.draw(batch, "↑/↓ para navegar, ENTER para selecionar", 60, 70);
+            font.draw(batch, "Navegar, ENTER para selecionar", 60, 70);
             font.getData().setScale(1.15f);
 
         } else if (pauseSub == PauseSub.DIFFICULTY) {
@@ -1130,7 +1130,7 @@ public class GameScreen extends ScreenAdapter {
             }
             font.setColor(Color.GRAY);
             font.getData().setScale(0.95f);
-            font.draw(batch, "↑/↓ para escolher, ENTER confirma | ESC volta", 60, 70);
+            font.draw(batch, "Escolher, ENTER confirma | ESC volta", 60, 70);
             font.getData().setScale(1.15f);
 
         } else if (pauseSub == PauseSub.OPTIONS) {
@@ -1159,7 +1159,7 @@ public class GameScreen extends ScreenAdapter {
 
             font.setColor(Color.GRAY);
             font.getData().setScale(0.95f);
-            font.draw(batch, "←/→ ajustam o volume | ENTER/ESC volta", 60, 70);
+            font.draw(batch, "Ajusta o volume | ENTER/ESC volta", 60, 70);
             font.getData().setScale(1.15f);
         }
 

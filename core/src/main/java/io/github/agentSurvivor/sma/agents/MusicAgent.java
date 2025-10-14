@@ -49,7 +49,7 @@ public class MusicAgent extends Agent {
 
     private void sendToGame(String cmd) {
         ACLMessage out = new ACLMessage(ACLMessage.INFORM);
-        out.setOntology(CoordinatorAgent.ONT_CMD); // ajuda o coordinator a diferenciar
+        out.setOntology(CoordinatorAgent.ONT_CMD);
         out.setContent(cmd);
         out.addReceiver(new AID(GameBridgeAgent.NAME, AID.ISLOCALNAME));
         send(out);

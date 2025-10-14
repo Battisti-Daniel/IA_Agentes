@@ -99,6 +99,7 @@ public class CoordinatorAgent extends Agent {
         if (c.contains("\"type\":\"PLAYER_DIED\""))    return "PLAYER_DIED";
         if (c.contains("\"type\":\"PLAYER_SHOT\""))    return "PLAYER_SHOT";
         if (c.contains("\"type\":\"PLAYER_SCORED\""))  return "PLAYER_SCORED";
+        if (c.contains("\"type\":\"PLAYER_UPGRADE\""))  return "PLAYER_UPGRADE";
         if (c.contains("\"type\":\"GAME_RESET\""))     return "GAME_RESET";
         if (c.contains("\"type\":\"AGENT_DECISION\"")) return "AGENT_DECISION";
         if (c.contains("\"type\":\"WORLD_SNAPSHOT\"")) return "WORLD_SNAPSHOT";

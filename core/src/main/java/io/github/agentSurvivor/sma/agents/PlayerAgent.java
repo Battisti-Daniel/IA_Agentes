@@ -24,6 +24,18 @@ public class PlayerAgent extends Agent {
                     cmd.addReceiver(new AID(GameBridgeAgent.NAME, AID.ISLOCALNAME));
                     send(cmd);
                 }
+                if (ev != null && ev.contains("\"type\":\"PLAYER_UPGRADE\"")) {
+                    ACLMessage cmd = new ACLMessage(ACLMessage.INFORM);
+                    cmd.setContent("Update Skill");
+                    cmd.addReceiver(new AID(GameBridgeAgent.NAME, AID.ISLOCALNAME));
+                    send(cmd);
+
+                    ACLMessage out = new ACLMessage(ACLMessage.INFORM);
+                    out.setOntology(CoordinatorAgent.ONT_CMD);
+                    out.setContent("\"cmd\":\"upgrade\"");
+                    out.addReceiver(new AID(GameBridgeAgent.NAME, AID.ISLOCALNAME));
+                    send(out);
+                }
             }
         });
     }
