@@ -6,7 +6,7 @@ import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
 
 public class PlayerAgent extends Agent {
-    public static final String NAME = "player";
+    public static final String NAME = "jogador";
 
     @Override
     protected void setup() {

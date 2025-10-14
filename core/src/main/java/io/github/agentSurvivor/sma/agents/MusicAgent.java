@@ -6,7 +6,7 @@ import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
 
 public class MusicAgent extends Agent {
-    public static final String NAME = "music";
+    public static final String NAME = "musica";
 
     @Override
     protected void setup() {

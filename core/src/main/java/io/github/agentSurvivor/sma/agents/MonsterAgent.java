@@ -7,7 +7,7 @@ import jade.core.behaviours.TickerBehaviour;
 import jade.lang.acl.ACLMessage;
 
 public class MonsterAgent extends Agent {
-    public static final String NAME = "monster";
+    public static final String NAME = "mobs";
 
     // Estado observado
     private int alive = 0;

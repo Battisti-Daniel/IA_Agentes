@@ -7,7 +7,7 @@ import jade.lang.acl.ACLMessage;
 
 public class CoordinatorAgent extends Agent {
 
-    public static final String NAME = "Coordenador dos eventos";
+    public static final String NAME = "eventos";
 
     public static final String ONT_EVENT = "ONT_EVENT";
     public static final String ONT_CMD   = "ONT_CMD";

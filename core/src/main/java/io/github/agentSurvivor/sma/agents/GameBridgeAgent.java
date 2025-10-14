@@ -8,7 +8,7 @@ import jade.lang.acl.ACLMessage;
 
 public class GameBridgeAgent extends Agent {
 
-    public static final String NAME = "game-bridge";
+    public static final String NAME = "ponte-jogo";
 
     @Override
     protected void setup() {
